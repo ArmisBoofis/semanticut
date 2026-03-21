@@ -7,6 +7,7 @@ stepsCompleted:
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/architecture.md
+  - _bmad-output/planning-artifacts/ux-design-specification.md
 ---
 
 # semanticut - Epic Breakdown
@@ -72,11 +73,12 @@ NFR7: Reliability and reproducibility sufficient for a Mistral reviewer running 
 
 ### UX Design Requirements
 
-No separate UX design document exists yet; UX-related requirements are captured implicitly via:
-- Scene coherence (sentence boundaries, avoiding mid-sentence cuts).
-- Clear search → jump loop with visible feedback.
-- Ingestion progress visibility, primarily via the admin page.
-- Differentiation between a “user-facing search page” and an “admin ingestion/status page”.
+**Authoritative UX document:** `_bmad-output/planning-artifacts/ux-design-specification.md` (supplementary: `ux-design-directions.html`, `ux-color-themes.html`). Implementation and QA should treat it as the source for flows, components, and reviewer-demo polish unless this epic doc explicitly narrows scope.
+
+**MVP obligations called out there (and reflected in architecture):**
+- **French-only product UI** in the browser, locale `fr-FR`, with centralized strings (see architecture “Localization & UI language”).
+- **Primary vs admin:** user-facing search page lists only search-ready videos; admin page lists all videos (including ingesting), status/progress, and removal — matches FR6/FR7 as concrete UX rules on top of PRD MVP.
+- **Interaction quality:** search → jump loop with visible feedback; ingestion honesty/progress; scene coherence (sentence boundaries, vague-query behavior) as specified in the PRD and expanded in the UX spec.
 
 ### FR Coverage Map
 
@@ -88,15 +90,15 @@ FR5: Epic 1 - Reviewer-Ready Environment & Stack Setup
 FR6: Epic 3 - Searchable Video Experience (Primary Page)  
 FR7: Epic 2 - Video Registration & Ingestion Management (Admin)  
 
+_Note: FR6 and FR7 are not separate PRD numbered requirements; they decompose PRD MVP “video selection” and async ingestion into explicit primary-page and admin behaviors._
+
 ## Epic List
 
 ### Epic 1: Reviewer-Ready Environment & Stack Setup
+
 Enable a Mistral reviewer to clone the repo, run a single Docker Compose command, and access a working web UI backed by a FastAPI API and PostgreSQL (with pgvector) that are wired together correctly.
+
 **FRs covered:** FR5
-
-## Epic 1: Reviewer-Ready Environment & Stack Setup
-
-Enable a Mistral reviewer to clone the repo, run a single Docker Compose command, and access a working web UI backed by a FastAPI API and PostgreSQL (with pgvector) that are wired together correctly.
 
 ### Story 1.1: Set up initial project from starter template (Docker + pgvector)
 

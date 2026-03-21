@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>semanticut — color theme tokens (reference)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; color: #18181b; background: #fafafa; }
+    h1 { font-size: 1.25rem; }
+    p { max-width: 65ch; color: #52525b; }
+    .swatch { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+    .card {
+      width: 140px; border-radius: 8px; overflow: hidden; border: 1px solid #e4e4e7;
+      background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .color { height: 56px; }
+    .meta { padding: 0.5rem 0.6rem; font-size: 0.75rem; }
+    .name { font-weight: 600; }
+    .use { color: #71717a; margin-top: 0.15rem; }
+    a { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>semanticut — neutral + semantic color reference</h1>
+  <p align="justify">Static reference aligned with the UX spec: <strong>zinc/slate</strong> surfaces, one <strong>primary</strong> accent for CTAs/focus, semantic <strong>success / warning / destructive</strong>. Implement via Tailwind + shadcn CSS variables.</p>
+  <div class="swatch">
+    <div class="card"><div class="color" style="background:#fafafa;border-bottom:1px solid #e4e4e7;"></div><div class="meta"><div class="name">background</div><div class="use">page</div></div></div>
+    <div class="card"><div class="color" style="background:#ffffff;border-bottom:1px solid #e4e4e7;"></div><div class="meta"><div class="name">surface</div><div class="use">cards</div></div></div>
+    <div class="card"><div class="color" style="background:#18181b;"></div><div class="meta"><div class="name">foreground</div><div class="use">text</div></div></div>
+    <div class="card"><div class="color" style="background:#3b82f6;"></div><div class="meta"><div class="name">primary</div><div class="use">Search, focus</div></div></div>
+    <div class="card"><div class="color" style="background:#22c55e;"></div><div class="meta"><div class="name">success</div><div class="use">ready</div></div></div>
+    <div class="card"><div class="color" style="background:#f59e0b;"></div><div class="meta"><div class="name">warning</div><div class="use">degraded</div></div></div>
+    <div class="card"><div class="color" style="background:#ef4444;"></div><div class="meta"><div class="name">destructive</div><div class="use">failed</div></div></div>
+    <div class="card"><div class="color" style="background:#0a0a0a;border-bottom:1px solid #27272a;"></div><div class="meta"><div class="name">video well</div><div class="use">letterbox</div></div></div>
+  </div>
+  <p><a href="ux-design-directions.html">← Back to design directions mockups</a></p>
+</body>
+</html>

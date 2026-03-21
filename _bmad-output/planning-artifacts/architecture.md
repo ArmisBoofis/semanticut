@@ -7,6 +7,7 @@ stepsCompleted:
 inputDocuments:
   - _bmad-output/planning-artifacts/product-brief-semanticut-2026-03-17.md
   - _bmad-output/planning-artifacts/prd.md
+  - _bmad-output/planning-artifacts/ux-design-specification.md
 workflowType: 'architecture'
 project_name: 'semanticut'
 user_name: 'Armand'
@@ -185,6 +186,13 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
   - One primary page that combines video selection, ingestion status, search, and playback.
 - Routing is minimal (single main route, with optional video-id parameters later if needed).
 
+### Localization & UI language
+
+- **Product UI language:** French only for all user-visible strings in the browser (aligned with BMM `config.yaml` `product_ui_language` / `product_ui_locale` and with `ux-design-specification.md`).
+- **Locale:** Use `fr-FR` for locale-aware formatting (dates, numbers, durations) where the UI displays them.
+- **Implementation:** Use a centralized string strategy (for example `next-intl` with locale-scoped message files, or an equivalent Next.js i18n pattern) so copy is consistent, reviewable, and not hard-coded as mixed-language literals in components.
+- **Authoritative UX:** Flows, components, primary vs admin surfaces, and visual/UX details live in `_bmad-output/planning-artifacts/ux-design-specification.md`, with supplementary references in `ux-design-directions.html` and `ux-color-themes.html`.
+
 ### Infrastructure & Deployment
 
 - Deployment for POC is strictly local via Docker Compose, with three main services:
@@ -285,7 +293,7 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
   - Use structured exceptions mapped to HTTP status codes and the standard error shape (`{ "error": { code, message } }`).
   - Log internal details server-side; return concise, user-facing messages to the client.
 - Frontend:
-  - Display clear, short error messages (e.g., “Ingestion is still running, try again in a few seconds”) rather than raw error codes.
+  - Display clear, short user-facing messages in **French** (per Localization & UI language), not raw error codes; tone and copy live in the UX spec / message catalogs.
 
 **Loading State Patterns:**
 - Use descriptive loading flags (`isIngesting`, `isSearching`) instead of generic `loading`.
