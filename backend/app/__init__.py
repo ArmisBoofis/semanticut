@@ -1,0 +1,1 @@
+"""semanticut FastAPI application package."""

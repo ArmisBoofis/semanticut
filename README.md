@@ -23,6 +23,11 @@ Monorepo for semantic video search: `backend/` (FastAPI), `frontend/` (Next.js),
    | `POSTGRES_PASSWORD` | Database password (keep secret in real `.env`) |
    | `POSTGRES_DB` | Database name |
    | `POSTGRES_PORT` | Host port mapped to PostgreSQL (default `5432`) |
+   | `API_PORT` | Host port for the FastAPI **`api`** service (default `8000`) |
+   | `POSTGRES_HOST` | DB hostname for the API (Compose sets **`db`**; local dev often **`localhost`**) |
+   | `DB_CONNECT_TIMEOUT` / `DB_COMMAND_TIMEOUT` | Optional asyncpg timeouts (seconds) for connect / commands |
+
+The **`api`** service receives the same **`POSTGRES_USER`**, **`POSTGRES_PASSWORD`**, and **`POSTGRES_DB`** as **`db`**, plus **`POSTGRES_HOST`** (e.g. **`db`** on the Compose network). The app builds an async **`DATABASE_URL`** with **URL-encoded** credentials (so special characters in passwords are safe). You can still set **`DATABASE_URL`** explicitly to override.
 
 The committed **`.env.example`** lists defaults without secrets; **`.env`** is gitignored.
 
@@ -42,15 +47,28 @@ Or detached:
 docker compose up -d
 ```
 
-This builds/starts services defined in `docker-compose.yml`. For Story 1.1, the only application service is **`db`**: PostgreSQL using the **`pgvector/pgvector`** image (pg16) with a named volume for data and init scripts under `docker/postgres/init/`.
+This builds/starts services defined in `docker-compose.yml`. The stack includes:
 
-### Verify `db` is healthy
+- **`db`**: PostgreSQL using the **`pgvector/pgvector`** image (pg16) with a named volume for data and init scripts under `docker/postgres/init/`.
+- **`api`**: FastAPI (Story 1.2), exposed on **`API_PORT`** (default **8000**).
+
+The **`web`** (Next.js) service is added in **Story 1.3**.
+
+### Verify `db` and `api`
 
 ```bash
 docker compose ps
 ```
 
-The **`db`** service should show as **healthy** once `pg_isready` succeeds.
+The **`db`** service should show as **healthy** once `pg_isready` succeeds. The **`api`** service should be **running** after the image builds.
+
+**Health check (API + database):**
+
+```bash
+curl -sS "http://localhost:${API_PORT:-8000}/health"
+```
+
+Expect **HTTP 200** and JSON like `{"status":"ok","database":"ok"}`. If PostgreSQL is down or unreachable, **`GET /health`** returns **503** with `database: "error"` (not a false “all OK”).
 
 ## pgvector
 

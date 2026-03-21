@@ -3,3 +3,7 @@ _bmad
 .vscode
 .env
 .env.local
+backend/.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
