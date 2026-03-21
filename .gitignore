@@ -1,2 +1,5 @@
 _bmad
 .cursor
+.vscode
+.env
+.env.local

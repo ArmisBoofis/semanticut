@@ -1,0 +1,71 @@
+# generated: 2026-03-21T10:48:03Z
+# last_updated: 2026-03-21T14:30:00Z
+# project: semanticut
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: "2026-03-21T10:48:03Z"
+last_updated: "2026-03-21T14:30:00Z"
+project: semanticut
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: in-progress
+  1-1-set-up-initial-project-from-starter-template-docker-pgvector: done
+  1-2-dockerized-fastapi-backend-wired-to-postgresql: backlog
+  1-3-dockerized-nextjs-frontend-wired-into-the-stack: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-admin-can-register-videos-for-ingestion: backlog
+  2-2-admin-page-listing-all-videos-with-ingestion-status: backlog
+  2-3-admin-can-remove-videos-and-associated-ingestion-data: backlog
+  2-4-asynchronous-ingestion-pipeline-for-registered-videos: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-primary-page-lists-only-fully-ingested-videos: backlog
+  3-2-natural-language-search-returns-best-matching-segment: backlog
+  3-3-quote-precise-seeking-for-exact-phrase-queries: backlog
+  3-4-scene-coherent-seeking-for-vague-queries: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-primary-page-search-interaction-shows-loading-and-handles-timeout-errors: backlog
+  4-2-search-results-update-the-ui-and-seek-the-player-to-start-ts: backlog
+  4-3-smooth-seeking-ux-when-users-run-repeated-searches: backlog
+  4-4-admin-page-ingestion-ui-shows-phases-progress-clearly-for-all-states: backlog
+  4-5-graceful-system-level-failure-handling-backend-unreachable-no-data: backlog
+  epic-4-retrospective: optional
