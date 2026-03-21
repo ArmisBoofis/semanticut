@@ -1,5 +1,5 @@
 # generated: 2026-03-21T10:48:03Z
-# last_updated: 2026-03-21T23:45:00Z
+# last_updated: 2026-03-21T18:30:00Z
 # project: semanticut
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,21 +35,21 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-03-21T10:48:03Z"
-last_updated: "2026-03-21T23:45:00Z"
+last_updated: "2026-03-21T18:30:00Z"
 project: semanticut
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-set-up-initial-project-from-starter-template-docker-pgvector: done
   1-2-dockerized-fastapi-backend-wired-to-postgresql: done
-  1-3-dockerized-nextjs-frontend-wired-into-the-stack: review
-  epic-1-retrospective: optional
+  1-3-dockerized-nextjs-frontend-wired-into-the-stack: done
+  epic-1-retrospective: done
 
-  epic-2: backlog
-  2-1-admin-can-register-videos-for-ingestion: backlog
+  epic-2: in-progress
+  2-1-admin-can-register-videos-for-ingestion: review
   2-2-admin-page-listing-all-videos-with-ingestion-status: backlog
   2-3-admin-can-remove-videos-and-associated-ingestion-data: backlog
   2-4-asynchronous-ingestion-pipeline-for-registered-videos: backlog

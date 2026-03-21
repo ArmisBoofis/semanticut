@@ -74,4 +74,18 @@ class Settings(BaseSettings):
         return f"{host}:{port}/{name}"
 
 
+def sync_database_url_for_alembic(database_url: str | None) -> str:
+    """Convert async SQLAlchemy URL to sync psycopg (v3) URL for Alembic migrations."""
+    if not database_url:
+        raise ValueError("database_url is required for migrations")
+    url = database_url.strip()
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    raise ValueError(
+        "Unsupported database URL for Alembic (expected postgresql+asyncpg:// or postgresql://)"
+    )
+
+
 settings = Settings()
