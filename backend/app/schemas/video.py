@@ -45,4 +45,12 @@ class VideoListItem(BaseModel):
             "Reserved value `unknown` means no related job row (data integrity issue)."
         ),
     )
+    ingestion_phase: str | None = Field(
+        default=None,
+        description="Current ingestion phase from `ingestion_jobs.phase` when a job exists.",
+    )
+    ingestion_progress_percent: int | None = Field(
+        default=None,
+        description="Progress 0–100 from `ingestion_jobs.progress_percent` when set.",
+    )
     created_at: datetime

@@ -78,7 +78,7 @@ async def video_client(video_engine):
             yield session
 
     app.dependency_overrides[get_db_session] = override_get_db
-    transport = httpx.ASGITransport(app=app, lifespan="on")
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()

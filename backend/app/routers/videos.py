@@ -5,6 +5,8 @@ from app.deps import get_db_session
 from app.schemas.video import VideoCreatedResponse, VideoCreateRequest, VideoListItem
 from app.services.video_service import (
     create_video_with_job,
+    ingestion_phase_for_video,
+    ingestion_progress_percent_for_video,
     ingestion_status_for_video,
     list_videos,
 )
@@ -46,6 +48,8 @@ async def get_videos(
             id=v.id,
             label=v.label,
             ingestion_status=ingestion_status_for_video(v),
+            ingestion_phase=ingestion_phase_for_video(v),
+            ingestion_progress_percent=ingestion_progress_percent_for_video(v),
             created_at=v.created_at,
         )
         for v in rows

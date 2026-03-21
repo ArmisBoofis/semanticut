@@ -87,3 +87,19 @@ def ingestion_status_for_video(video: Video) -> str:
     return job.status
 
 
+def ingestion_phase_for_video(video: Video) -> str | None:
+    """Return job phase, or None if no job row."""
+    job = video.ingestion_job
+    if job is None:
+        return None
+    return job.phase
+
+
+def ingestion_progress_percent_for_video(video: Video) -> int | None:
+    """Return job progress percent, or None if no job row."""
+    job = video.ingestion_job
+    if job is None:
+        return None
+    return job.progress_percent
+
+
