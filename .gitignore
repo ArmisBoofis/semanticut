@@ -7,3 +7,23 @@ backend/.venv
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Dependencies & build outputs (monorepo)
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+**/build/
+coverage/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
