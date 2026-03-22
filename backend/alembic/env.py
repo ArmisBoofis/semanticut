@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings, sync_database_url_for_alembic
 from app.models.base import Base
+from app.models.transcript_segment import TranscriptSegment  # noqa: F401
 from app.models.video import IngestionJob, Video  # noqa: F401
 
 config = context.config

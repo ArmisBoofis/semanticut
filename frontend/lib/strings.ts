@@ -24,4 +24,27 @@ export const fr = {
   /** Em dash placeholder when phase/progress unknown */
   adminDash: "—",
   adminNoProgress: "non disponible",
+  adminColActions: "Actions",
+  adminDelete: "Supprimer",
+  adminDeleteDialogTitle: "Supprimer cette vidéo ?",
+  adminDeleteDialogBody:
+    "Cette action est irréversible. La vidéo et les données d’ingestion associées seront supprimées.",
+  adminDeleteCancel: "Annuler",
+  adminDeleteConfirm: "Supprimer",
+  adminDeleteSuccess: "La vidéo a été supprimée.",
+  adminDeleteError:
+    "Impossible de supprimer la vidéo. Vérifiez l’API et réessayez.",
+  adminRegisterTitle: "Enregistrer une nouvelle vidéo",
+  adminRegisterHint:
+    "Choisissez un fichier vidéo et un libellé, puis validez pour lancer l’ingestion.",
+  adminRegisterLabel: "Libellé",
+  adminRegisterLabelPlaceholder: "Libellé affiché dans la liste",
+  adminRegisterFile: "Fichier vidéo",
+  adminRegisterSubmit: "Enregistrer",
+  adminRegisterSubmitting: "Enregistrement…",
+  adminRegisterSuccess: "Vidéo enregistrée. L’ingestion va démarrer.",
+  adminRegisterLabelRequired: "Indiquez un libellé.",
+  adminRegisterFileRequired: "Choisissez un fichier vidéo.",
+  adminRegisterError:
+    "Impossible d’enregistrer la vidéo. Vérifiez le fichier et réessayez.",
 } as const;

@@ -31,6 +31,22 @@ class VideoCreatedResponse(BaseModel):
     created_at: datetime
 
 
+class VideoIngestionStatusResponse(BaseModel):
+    """GET /videos/{video_id}/status — detailed ingestion job payload."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    video_id: UUID
+    job_id: UUID
+    status: str
+    phase: str | None = None
+    progress_percent: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class VideoListItem(BaseModel):
     """Single item in GET /videos array."""
 

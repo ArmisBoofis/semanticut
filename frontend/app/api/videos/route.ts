@@ -7,6 +7,53 @@ function internalBaseUrl(): string {
 }
 
 /**
+ * Proxies multipart registration to `POST /videos/upload` on the API (shared volume + DB row).
+ */
+export async function POST(request: Request) {
+  const url = `${internalBaseUrl()}/videos/upload`;
+  try {
+    const formData = await request.formData();
+    const res = await fetch(url, {
+      method: "POST",
+      body: formData,
+      signal: AbortSignal.timeout(120_000),
+    });
+    const data: unknown = await res.json().catch(() => null);
+    if (!res.ok) {
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "error" in data &&
+        typeof (data as { error?: unknown }).error === "object" &&
+        (data as { error: { code?: string; message?: string } }).error
+      ) {
+        return NextResponse.json(data, { status: res.status });
+      }
+      return NextResponse.json(
+        {
+          error: {
+            code: "UPSTREAM_ERROR",
+            message: `API a répondu avec le code ${res.status}`,
+          },
+        },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json(data, { status: 201 });
+  } catch {
+    return NextResponse.json(
+      {
+        error: {
+          code: "UPSTREAM_ERROR",
+          message: "Impossible de joindre l’API.",
+        },
+      },
+      { status: 502 },
+    );
+  }
+}
+
+/**
  * Proxies `GET /videos` from FastAPI using `API_INTERNAL_URL` (Docker: `http://api:8000`).
  * `cache: "no-store"` keeps polling responses fresh.
  */

@@ -40,6 +40,21 @@ class Settings(BaseSettings):
     db_connect_timeout_seconds: float = Field(default=5.0, validation_alias="DB_CONNECT_TIMEOUT")
     db_command_timeout_seconds: float = Field(default=5.0, validation_alias="DB_COMMAND_TIMEOUT")
 
+    mistral_api_key: str | None = Field(default=None, validation_alias="MISTRAL_API_KEY")
+    video_storage_root: str = Field(default="/data/videos", validation_alias="VIDEO_STORAGE_ROOT")
+    video_upload_max_bytes: int = Field(
+        default=500 * 1024 * 1024,
+        validation_alias="VIDEO_UPLOAD_MAX_BYTES",
+    )
+    mistral_transcription_model: str = Field(
+        default="voxtral-mini-latest",
+        validation_alias="MISTRAL_TRANSCRIPTION_MODEL",
+    )
+    mistral_embedding_model: str = Field(
+        default="mistral-embed",
+        validation_alias="MISTRAL_EMBEDDING_MODEL",
+    )
+
     @model_validator(mode="after")
     def resolve_database_url(self) -> Self:
         direct = (self.database_url or "").strip() or None

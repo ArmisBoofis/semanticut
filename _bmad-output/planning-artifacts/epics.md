@@ -161,12 +161,12 @@ So that I can verify the full stack wiring from a browser even before real featu
 **Then** I see a single-copy-paste command (or very small set of commands) that takes me from clone → running stack → URL to visit, with notes about expected ports.
 
 ### Epic 2: Video Registration & Ingestion Management (Admin)
-Enable an admin to register and remove videos, trigger ingestion, and monitor ingestion status and progress for all videos from an admin page.
+Enable an admin to register and remove videos (including **registering videos from the admin UI** via an upload form, in addition to API registration), trigger ingestion, and monitor ingestion status and progress for all videos from an admin page.
 **FRs covered:** FR2, FR7
 
 ## Epic 2: Video Registration & Ingestion Management (Admin)
 
-Enable an admin to register and remove videos, trigger ingestion, and monitor ingestion status and progress for all videos from an admin page.
+Enable an admin to register and remove videos (including **registering videos from the admin UI** via an upload form, in addition to API registration), trigger ingestion, and monitor ingestion status and progress for all videos from an admin page.
 
 ### Story 2.1: Admin can register videos for ingestion
 
@@ -255,6 +255,27 @@ So that videos become searchable without blocking the UI and with clear status r
 **Given** ingestion fails at any step  
 **When** I view the video in the admin list or status endpoint  
 **Then** the ingestion status is `failed`, with a reason or error message logged server-side and a concise error state visible to the admin (for example, “Ingestion failed – see logs”).
+
+### Story 2.5: Admin can register videos via upload form on the admin page
+
+As an admin,
+I want to register a new video for ingestion using an upload form on the admin page,
+So that I can run the demo without calling the HTTP API manually.
+
+**Acceptance Criteria:**
+
+**Given** the stack is running and I am on the admin page  
+**When** I choose a video file and provide required fields (for example, label) as required by the API and submit the form  
+**Then** the client uses the same registration contract as Story 2.1 (for example `POST /videos` with the agreed payload — multipart or JSON per architecture)  
+**And** I see loading feedback and success or structured error feedback in the UI.
+
+**Given** I submit invalid or unsupported input  
+**When** the API returns an error  
+**Then** the admin UI shows a clear message using the standard `{ "error": { code, message } }` pattern surfaced in French for the user, without raw stack traces.
+
+**Given** a video is registered successfully  
+**When** I view the admin list of videos  
+**Then** the new video appears with the same ingestion status behavior as for API-registered videos.
 
 ## Epic 3: Searchable Video Experience (Primary Page)
 Enable a user to choose from fully ingested videos on the primary page, run natural-language searches, and jump the video player to precise or scene-coherent timestamps that satisfy the latency and accuracy constraints.

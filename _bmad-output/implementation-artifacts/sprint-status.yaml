@@ -1,5 +1,5 @@
 # generated: 2026-03-21T10:48:03Z
-# last_updated: 2026-03-21T21:00:00Z
+# last_updated: 2026-03-22T12:30:00Z
 # project: semanticut
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-03-21T10:48:03Z"
-last_updated: "2026-03-21T21:00:00Z"
+last_updated: "2026-03-22T12:30:00Z"
 project: semanticut
 project_key: NOKEY
 tracking_system: file-system
@@ -50,9 +50,10 @@ development_status:
 
   epic-2: in-progress
   2-1-admin-can-register-videos-for-ingestion: done
-  2-2-admin-page-listing-all-videos-with-ingestion-status: review
-  2-3-admin-can-remove-videos-and-associated-ingestion-data: backlog
-  2-4-asynchronous-ingestion-pipeline-for-registered-videos: backlog
+  2-2-admin-page-listing-all-videos-with-ingestion-status: done
+  2-3-admin-can-remove-videos-and-associated-ingestion-data: done
+  2-4-asynchronous-ingestion-pipeline-for-registered-videos: done
+  2-5-admin-can-register-videos-via-admin-ui-upload-form: done
   epic-2-retrospective: optional
 
   epic-3: backlog

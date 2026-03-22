@@ -450,6 +450,27 @@ flowchart TD
 - **Make waiting legible** — **ingest** and **search** both show **active** progress, not **frozen** UI.
 - **Design for failure** — **assume** **timeouts** and **bad** files; **preserve** **agency** with **next steps**.
 
+## Admin — video registration (upload form)
+
+**Goal:** An **admin** can **register** a new video for ingestion **from the admin surface** without using `curl` or external API clients — supporting the **reviewer path** and **Story 2.5**.
+
+**Placement:** Same **admin** route as the video list (**Story 2.2**): a **dedicated section** (for example above the table) so **register** and **monitor** are clearly related.
+
+**French (required):** All **labels**, **buttons**, **validation**, **helper** text, **`aria-label`s**, and **user-visible** error summaries — consistent with **Localization & UI language (French)**.
+
+**Controls:**
+
+- **File:** Native **file input** (optional **drag-and-drop** later); **accept** video types aligned with the API.
+- **Fields:** **Label** (or other required metadata) per **`POST /videos`** contract.
+- **Primary action:** Submit — **disabled** while the request is in flight; **loading** state visible.
+
+**Feedback:**
+
+- **Success:** New row appears in the admin list on next **poll** or refresh (**Story 2.2**), or **inline** confirmation before list update.
+- **API errors:** Map `{ "error": { code, message } }` to **French** copy; **no** internal stack traces in the UI.
+
+**Patterns:** Reuse **shadcn** form primitives, **`Alert`** for failures, same **secondary** button weight as other non–hero-path actions (see **Button hierarchy**).
+
 ## Component Strategy
 
 ### Design System Components

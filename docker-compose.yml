@@ -34,9 +34,34 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      VIDEO_STORAGE_ROOT: ${VIDEO_STORAGE_ROOT:-/data/videos}
+    volumes:
+      - ${VIDEO_STORAGE_HOST_PATH:-./data/videos}:/data/videos
     depends_on:
       db:
         condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: semanticut-worker
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      VIDEO_STORAGE_ROOT: ${VIDEO_STORAGE_ROOT:-/data/videos}
+    volumes:
+      - ${VIDEO_STORAGE_HOST_PATH:-./data/videos}:/data/videos:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.worker"]
 
   web:
     build:

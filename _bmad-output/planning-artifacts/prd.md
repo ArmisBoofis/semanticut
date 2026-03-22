@@ -91,6 +91,7 @@ The “why now” is that speech-to-text quality and the surrounding AI stack ha
 
 - Video selection: user selects a specific video to search within.
 - Ingestion pipeline (async): upload video → async processing with progress → searchable index ready.
+- Admin registration: an admin can register a video for ingestion **via the web UI** (admin page), not only via the API, so a reviewer can complete setup without HTTP tools.
 - Search + jump: natural-language search over transcript; jump behavior that satisfies:
   - ≤ 10 seconds end-to-end, and
   - Quote precision within ± 5 seconds.
