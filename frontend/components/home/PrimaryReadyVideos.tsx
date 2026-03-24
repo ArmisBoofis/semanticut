@@ -38,8 +38,22 @@ function matchQualityLabel(
 }
 
 function MacroContextWithHighlight({ match }: { match: VideoSearchMatch }) {
+  const content = match.macro_context_text ?? match.text;
+  const hasHighlightBounds =
+    typeof match.match_start_offset === "number" &&
+    typeof match.match_end_offset === "number";
+  if (!hasHighlightBounds) {
+    return (
+      <div className="space-y-1">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          {fr.homeSearchMacroContextTitle}
+        </p>
+        <p className="whitespace-pre-wrap text-zinc-300">{content}</p>
+      </div>
+    );
+  }
   const { before, mid, after } = splitMacroHighlight(
-    match.macro_context_text,
+    content,
     match.match_start_offset,
     match.match_end_offset,
   );
@@ -64,6 +78,13 @@ function MacroContextWithHighlight({ match }: { match: VideoSearchMatch }) {
 import { fr } from "@/lib/strings";
 
 const POLL_INTERVAL_MS = 8_000;
+const DEFAULT_SEARCH_TIMEOUT_MS = 12_000;
+
+declare global {
+  interface Window {
+    __SEMANTICUT_SEARCH_TIMEOUT_MS__?: number;
+  }
+}
 
 export function PrimaryReadyVideos() {
   const [items, setItems] = useState<VideoListItem[] | null>(null);
@@ -78,10 +99,27 @@ export function PrimaryReadyVideos() {
   );
   const [searchNoMatch, setSearchNoMatch] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [isTimeoutError, setIsTimeoutError] = useState(false);
   const [seekToSeconds, setSeekToSeconds] = useState<number | null>(null);
   const [seekKey, setSeekKey] = useState(0);
+  const [playbackFromLabel, setPlaybackFromLabel] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const latestSeekKeyRef = useRef(0);
+
+  const isValidStartTs = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+  const onPlayerSeeked = useCallback(
+    (seconds: number, completedSeekKey: number) => {
+      if (completedSeekKey !== latestSeekKeyRef.current) return;
+      setPlaybackFromLabel(
+        `${fr.homeSearchPlaybackFromPrefix}${formatSecondsToClock(seconds)}`,
+      );
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -135,7 +173,10 @@ export function PrimaryReadyVideos() {
     setSearchResult(null);
     setSearchNoMatch(false);
     setSearchError(null);
+    setIsTimeoutError(false);
     setSeekToSeconds(null);
+    setPlaybackFromLabel(null);
+    setPlaybackError(null);
   }, [selectedId]);
 
   useEffect(() => {
@@ -150,20 +191,30 @@ export function PrimaryReadyVideos() {
     selectedId !== null &&
     query.trim().length > 0 &&
     !searchLoading;
+  const searchTimeoutMs =
+    typeof window !== "undefined" &&
+    Number.isFinite(window.__SEMANTICUT_SEARCH_TIMEOUT_MS__)
+      ? Number(window.__SEMANTICUT_SEARCH_TIMEOUT_MS__)
+      : DEFAULT_SEARCH_TIMEOUT_MS;
 
-  const onSubmitSearch = async (e: FormEvent) => {
-    e.preventDefault();
+  const startSearch = useCallback(async () => {
     if (!selectedId || !query.trim() || searchLoading) return;
 
     abortRef.current?.abort();
     const ac = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      ac.abort("timeout");
+    }, searchTimeoutMs);
     abortRef.current = ac;
 
     setSearchLoading(true);
     setSearchNoMatch(false);
     setSearchError(null);
+    setIsTimeoutError(false);
     setSearchResult(null);
     setSeekToSeconds(null);
+    setPlaybackFromLabel(null);
+    setPlaybackError(null);
 
     try {
       const res = await fetch(
@@ -197,14 +248,39 @@ export function PrimaryReadyVideos() {
         return;
       }
       setSearchResult(parsed);
+      if (!isValidStartTs(parsed.start_ts)) {
+        setSeekToSeconds(null);
+        setPlaybackError(fr.homeSearchUnplayableResult);
+        return;
+      }
+      setPlaybackError(null);
       setSeekToSeconds(parsed.start_ts);
-      setSeekKey((k) => k + 1);
+      setSeekKey((k) => {
+        const next = k + 1;
+        latestSeekKeyRef.current = next;
+        return next;
+      });
     } catch (err) {
+      const timeoutAbort =
+        err instanceof DOMException &&
+        err.name === "AbortError" &&
+        ac.signal.reason === "timeout";
+      if (timeoutAbort) {
+        setIsTimeoutError(true);
+        setSearchError(fr.homeSearchTimeoutError);
+        return;
+      }
       if (err instanceof DOMException && err.name === "AbortError") return;
       setSearchError(fr.homeSearchGenericError);
     } finally {
-      if (!ac.signal.aborted) setSearchLoading(false);
+      window.clearTimeout(timeoutId);
+      if (abortRef.current === ac) setSearchLoading(false);
     }
+  }, [query, searchLoading, searchTimeoutMs, selectedId]);
+
+  const onSubmitSearch = async (e: FormEvent) => {
+    e.preventDefault();
+    await startSearch();
   };
 
   if (loading) {
@@ -263,6 +339,7 @@ export function PrimaryReadyVideos() {
           videoId={selectedId}
           seekToSeconds={seekToSeconds}
           seekKey={seekKey}
+          onSeeked={onPlayerSeeked}
         />
       ) : null}
 
@@ -317,8 +394,28 @@ export function PrimaryReadyVideos() {
         ) : null}
 
         {searchError ? (
+          <div className="mt-3 space-y-2">
+            <p className="text-sm text-red-400" role="alert">
+              {searchError}
+            </p>
+            {isTimeoutError ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void startSearch();
+                }}
+                disabled={searchLoading || !canSubmitSearch}
+                className="rounded-md border border-zinc-600 px-3 py-1.5 text-sm text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {fr.homeSearchRetry}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {playbackError ? (
           <p className="mt-3 text-sm text-red-400" role="alert">
-            {searchError}
+            {playbackError}
           </p>
         ) : null}
 
@@ -327,10 +424,9 @@ export function PrimaryReadyVideos() {
             <p className="font-medium text-zinc-100">{fr.homeSearchSnippetTitle}</p>
             <MacroContextWithHighlight match={searchResult} />
             <p className="text-xs text-zinc-500">{matchQualityLabel(searchResult.match_quality)}</p>
-            <p className="text-sm text-emerald-400/90">
-              {fr.homeSearchPlaybackFromPrefix}
-              {formatSecondsToClock(searchResult.start_ts)}
-            </p>
+            {playbackFromLabel ? (
+              <p className="text-sm text-emerald-400/90">{playbackFromLabel}</p>
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -1,6 +1,8 @@
 """Unit tests for adaptive macro shortlist (no DB)."""
 
+import json
 from types import SimpleNamespace
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -10,6 +12,9 @@ from app.services.search_service import (
     _adaptive_macro_shortlist,
     _anchor_overlap_score,
     _build_structured_context_payload,
+    _enforce_near_peak_segment,
+    _force_scene_intent_for_vague_query,
+    _offsets_for_macro_highlight,
     _pick_micro_from_anchor,
 )
 
@@ -103,7 +108,100 @@ def test_pick_micro_from_anchor_uses_lexical_overlap() -> None:
     assert micros == [m0, m1]
 
 
+def test_pick_micro_from_anchor_quote_intent_prefers_verbatim() -> None:
+    macro = SimpleNamespace(id=uuid4())
+    m0 = SimpleNamespace(id=uuid4(), text="la phrase exacte est ici")
+    m1 = SimpleNamespace(id=uuid4(), text="la phrase partielle")
+    seg, _owner, _micros = _pick_micro_from_anchor(
+        macro_context=[(macro, [m1, m0])],
+        anchor_text="la phrase exacte",
+        quote_intent=True,
+    )
+    assert seg is m0
+
+
+def test_offsets_for_macro_highlight_degrades_without_exception() -> None:
+    macro = SimpleNamespace(text="prefix micro-texte suffix")
+    selected = SimpleNamespace(id=uuid4(), text="micro-texte")
+    other = SimpleNamespace(id=uuid4(), text="autre")
+    start, end = _offsets_for_macro_highlight(macro, [other, selected], selected)
+    assert macro.text[start:end] == selected.text
+
+
+def test_curated_quote_set_within_tolerance() -> None:
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "quote_precision_set.json"
+    cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+    for case in cases:
+        macro = SimpleNamespace(id=uuid4())
+        micros = [
+            SimpleNamespace(
+                id=uuid4(),
+                text=item["text"],
+                start_ts=float(item["start_ts"]),
+            )
+            for item in case["micro_segments"]
+        ]
+        seg, _owner, _micros = _pick_micro_from_anchor(
+            macro_context=[(macro, micros)],
+            anchor_text=case["query"],
+            quote_intent=True,
+        )
+        assert seg is not None
+        delta = abs(float(seg.start_ts) - float(case["expected_start_ts"]))
+        assert delta <= float(case["tolerance_seconds"])
+
+
 def test_anchor_overlap_score_prefers_containment() -> None:
     contain = _anchor_overlap_score("bonjour le monde", "xx bonjour le monde yy")
     partial = _anchor_overlap_score("bonjour le monde", "bonjour rapide")
     assert contain > partial
+
+
+def test_force_scene_intent_for_vague_query_defaults_to_scene() -> None:
+    assert _force_scene_intent_for_vague_query("montre moi le passage sur la migration", "quote") == "scene"
+    assert _force_scene_intent_for_vague_query("montre moi le passage sur la migration", "scene") == "scene"
+
+
+def test_force_scene_intent_for_verbatim_query_keeps_quote() -> None:
+    query = 'il dit "bonjour et bienvenue" mot pour mot'
+    assert _force_scene_intent_for_vague_query(query, "quote") == "quote"
+
+
+def test_enforce_near_peak_segment_falls_back_when_too_far() -> None:
+    peak = SimpleNamespace(id=uuid4(), start_ts=100.0)
+    near = SimpleNamespace(id=uuid4(), start_ts=125.0)
+    far = SimpleNamespace(id=uuid4(), start_ts=165.0)
+    selected = _enforce_near_peak_segment(selected=far, peak=peak, candidates=[far, near, peak], max_delta_seconds=30.0)
+    assert selected is near
+
+
+def test_enforce_near_peak_segment_keeps_selected_when_close() -> None:
+    peak = SimpleNamespace(id=uuid4(), start_ts=100.0)
+    selected = SimpleNamespace(id=uuid4(), start_ts=120.0)
+    out = _enforce_near_peak_segment(selected=selected, peak=peak, candidates=[selected, peak], max_delta_seconds=30.0)
+    assert out is selected
+
+
+def test_curated_vague_scene_set_within_peak_window() -> None:
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "vague_scene_set.json"
+    cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+    for case in cases:
+        micros = [
+            SimpleNamespace(
+                id=uuid4(),
+                text=item["text"],
+                start_ts=float(item["start_ts"]),
+            )
+            for item in case["micro_segments"]
+        ]
+        peak = next(
+            m for m in micros if float(case["expected_zone_start_ts"]) <= m.start_ts <= float(case["expected_zone_end_ts"])
+        )
+        selected = _enforce_near_peak_segment(
+            selected=micros[-1],
+            peak=peak,
+            candidates=micros,
+            max_delta_seconds=float(case["tolerance_seconds"]),
+        )
+        assert selected is not None
+        assert abs(float(selected.start_ts) - float(peak.start_ts)) <= float(case["tolerance_seconds"])

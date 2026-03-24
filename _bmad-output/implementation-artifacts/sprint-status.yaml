@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-03-21T10:48:03Z"
-last_updated: "2026-03-24T16:45:00Z"
+last_updated: "2026-03-24T13:45:30Z"
 project: semanticut
 project_key: NOKEY
 tracking_system: file-system
@@ -56,17 +56,17 @@ development_status:
   2-5-admin-can-register-videos-via-admin-ui-upload-form: done
   epic-2-retrospective: done
 
-  epic-3: in-progress
+  epic-3: done
   3-1-primary-page-lists-only-fully-ingested-videos: done
   3-2-natural-language-search-returns-best-matching-segment: done
   3-3-multi-scale-transcript-indexing-with-hybrid-macro-retrieval-and-direct-llm-timestamp-extraction: done
-  3-4-quote-precise-seeking-for-exact-phrase-queries: backlog
-  3-5-scene-coherent-seeking-for-vague-queries: backlog
+  3-4-quote-precise-seeking-for-exact-phrase-queries: done
+  3-5-scene-coherent-seeking-for-vague-queries: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-primary-page-search-interaction-shows-loading-and-handles-timeout-errors: backlog
-  4-2-search-results-update-the-ui-and-seek-the-player-to-start-ts: backlog
+  epic-4: in-progress
+  4-1-primary-page-search-interaction-shows-loading-and-handles-timeout-errors: done
+  4-2-search-results-update-the-ui-and-seek-the-player-to-start-ts: done
   4-3-smooth-seeking-ux-when-users-run-repeated-searches: backlog
   4-4-admin-page-ingestion-ui-shows-phases-progress-clearly-for-all-states: backlog
   4-5-graceful-system-level-failure-handling-backend-unreachable-no-data: backlog

@@ -165,7 +165,7 @@ async def _search_two_pass(
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     try:
-        anchor_res = mistral_client.select_sentence_anchor_from_structured_context(
+        anchor_res = mistral_client.select_sentence_anchor_intent_from_structured_context(
             user_query=user_query,
             structured_context_json=payload_json,
         )
@@ -180,9 +180,21 @@ async def _search_two_pass(
     seg, owning_macro, micros_in_macro = _pick_micro_from_anchor(
         macro_context=macro_ctx,
         anchor_text=anchor_res.anchor if anchor_res.status == "ok" else None,
+        quote_intent=_force_scene_intent_for_vague_query(user_query, anchor_res.intent)
+        == "quote",
     )
     if seg is None or owning_macro is None or micros_in_macro is None:
         raise AppError("NO_MATCH", "aucun passage pertinent trouvé pour cette requête", 404)
+    peak_macro, peak_macro_micros = macro_ctx[0]
+    peak_seg = peak_macro_micros[0]
+    seg = _enforce_near_peak_segment(
+        selected=seg,
+        peak=peak_seg,
+        candidates=peak_macro_micros if peak_macro_micros else micros_in_macro,
+        max_delta_seconds=30.0,
+    )
+    if seg.id not in {candidate.id for candidate in micros_in_macro}:
+        seg = micros_in_macro[0]
     confidence = await _micro_confidence_against_query(session, seg.id, query_embedding)
     start_off, end_off = _offsets_for_macro_highlight(owning_macro, micros_in_macro, seg)
     macro_text = owning_macro.text
@@ -329,10 +341,58 @@ def _anchor_overlap_score(anchor: str, micro_text: str) -> float:
     return overlap / len(a_tokens)
 
 
+def _looks_like_quote_query(query: str) -> bool:
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+    quote_markers = ('"', "'", "«", "»", "“", "”")
+    if any(marker in q for marker in quote_markers):
+        return True
+    lexical_markers = (
+        "mot pour mot",
+        "exact",
+        "exacte",
+        "exactement",
+        "citation",
+        "quote",
+        "verbatim",
+    )
+    return any(marker in q for marker in lexical_markers)
+
+
+def _force_scene_intent_for_vague_query(user_query: str, llm_intent: str) -> str:
+    """Default vague queries to scene intent, preserving quote-intent only when explicit."""
+    intent = (llm_intent or "scene").lower()
+    if _looks_like_quote_query(user_query):
+        return "quote" if intent == "quote" else "scene"
+    return "scene"
+
+
+def _enforce_near_peak_segment(
+    *,
+    selected: TranscriptSegment,
+    peak: TranscriptSegment,
+    candidates: list[TranscriptSegment],
+    max_delta_seconds: float = 30.0,
+) -> TranscriptSegment:
+    """Ensure chosen segment stays near the similarity peak region."""
+    if abs(float(selected.start_ts) - float(peak.start_ts)) <= max_delta_seconds:
+        return selected
+    within = [
+        seg
+        for seg in candidates
+        if abs(float(seg.start_ts) - float(peak.start_ts)) <= max_delta_seconds
+    ]
+    if not within:
+        return peak
+    return min(within, key=lambda seg: abs(float(seg.start_ts) - float(peak.start_ts)))
+
+
 def _pick_micro_from_anchor(
     *,
     macro_context: list[tuple[TranscriptMacroSegment, list[TranscriptSegment]]],
     anchor_text: str | None,
+    quote_intent: bool = False,
 ) -> tuple[TranscriptSegment | None, TranscriptMacroSegment | None, list[TranscriptSegment] | None]:
     if not macro_context:
         return None, None, None
@@ -344,6 +404,9 @@ def _pick_micro_from_anchor(
     for macro, micros in macro_context:
         for seg in micros:
             score = _anchor_overlap_score(anchor_text, seg.text)
+            if quote_intent and score > 0:
+                # Quote intent should strongly privilege lexical/verbatim overlap.
+                score *= 2.0
             if score <= 0:
                 continue
             if best_match is None or score > best_match[0]:
@@ -379,8 +442,12 @@ def _offsets_for_macro_highlight(
     texts = [s.text for s in micros]
     local_idx = next((i for i, s in enumerate(micros) if s.id == selected.id), None)
     if local_idx is None:
-        raise AppError("INTERNAL_ERROR", "incohérence macro/micro", 500)
+        return 0, len(selected.text)
     start_off, end_off = offset_for_micro_in_macro(texts, local_idx)
     if macro.text[start_off:end_off] != selected.text:
-        raise AppError("INTERNAL_ERROR", "incohérence des décalages macro/micro", 500)
+        pos = macro.text.find(selected.text)
+        if pos >= 0:
+            return pos, pos + len(selected.text)
+        # Best-effort degraded behavior: keep payload valid without crashing.
+        return 0, min(len(macro.text), len(selected.text))
     return start_off, end_off

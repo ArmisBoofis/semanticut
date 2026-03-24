@@ -38,6 +38,11 @@ export const fr = {
   homeSearchMalformedResponse: "Réponse serveur inattendue.",
   homeSearchGenericError:
     "La recherche a échoué. Vérifiez l’API puis réessayez.",
+  homeSearchTimeoutError:
+    "La recherche prend trop de temps. Réessayez dans un instant.",
+  homeSearchRetry: "Réessayer",
+  homeSearchUnplayableResult:
+    "Ce résultat ne peut pas être lu automatiquement. Relancez la recherche ou reformulez votre requête.",
   adminTitle: "Vidéos enregistrées",
   adminSubtitle: "État d’ingestion et progression",
   adminBackHome: "Accueil",

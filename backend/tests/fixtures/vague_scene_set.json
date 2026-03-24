@@ -1,0 +1,42 @@
+[
+  {
+    "query": "la partie sur la stabilite en mode degrade",
+    "expected_zone_start_ts": 80.0,
+    "expected_zone_end_ts": 115.0,
+    "tolerance_seconds": 30.0,
+    "micro_segments": [
+      {
+        "start_ts": 74.0,
+        "text": "on passe rapidement sur la configuration initiale"
+      },
+      {
+        "start_ts": 90.0,
+        "text": "la stabilite en mode degrade repose sur un fallback deterministe"
+      },
+      {
+        "start_ts": 126.0,
+        "text": "ensuite on couvre la telemetrie et les alertes"
+      }
+    ]
+  },
+  {
+    "query": "explique le passage ou ils preparaient les index",
+    "expected_zone_start_ts": 26.0,
+    "expected_zone_end_ts": 54.0,
+    "tolerance_seconds": 30.0,
+    "micro_segments": [
+      {
+        "start_ts": 18.0,
+        "text": "introduction generale du sujet"
+      },
+      {
+        "start_ts": 33.0,
+        "text": "ils preparaient les index pour accelerer la recherche semantique"
+      },
+      {
+        "start_ts": 61.0,
+        "text": "puis ils ont parle des couts de stockage"
+      }
+    ]
+  }
+]

@@ -9,9 +9,9 @@ export type VideoSearchMatch = {
   end_ts: number;
   text: string;
   confidence: number;
-  macro_context_text: string;
-  match_start_offset: number;
-  match_end_offset: number;
+  macro_context_text: string | null;
+  match_start_offset: number | null;
+  match_end_offset: number | null;
   match_quality: MatchQuality;
 };
 
@@ -32,17 +32,23 @@ export function parseSearchSuccess(data: unknown): VideoSearchMatch | null {
   const confidence = Number(o.confidence);
   const macro_context_text =
     typeof o.macro_context_text === "string" ? o.macro_context_text : null;
-  const match_start_offset = Number(o.match_start_offset);
-  const match_end_offset = Number(o.match_end_offset);
+  const rawStartOffset = o.match_start_offset;
+  const rawEndOffset = o.match_end_offset;
+  const hasOffsets =
+    rawStartOffset !== undefined &&
+    rawStartOffset !== null &&
+    rawEndOffset !== undefined &&
+    rawEndOffset !== null;
+  const match_start_offset = hasOffsets ? Number(rawStartOffset) : null;
+  const match_end_offset = hasOffsets ? Number(rawEndOffset) : null;
   const mq = o.match_quality;
   if (
     !Number.isFinite(start_ts) ||
     !Number.isFinite(end_ts) ||
     text === null ||
     !Number.isFinite(confidence) ||
-    macro_context_text === null ||
-    !Number.isFinite(match_start_offset) ||
-    !Number.isFinite(match_end_offset) ||
+    (hasOffsets &&
+      (!Number.isFinite(match_start_offset) || !Number.isFinite(match_end_offset))) ||
     !isMatchQuality(mq)
   ) {
     return null;
@@ -53,8 +59,9 @@ export function parseSearchSuccess(data: unknown): VideoSearchMatch | null {
     text,
     confidence,
     macro_context_text,
-    match_start_offset: Math.trunc(match_start_offset),
-    match_end_offset: Math.trunc(match_end_offset),
+    match_start_offset:
+      match_start_offset === null ? null : Math.trunc(match_start_offset),
+    match_end_offset: match_end_offset === null ? null : Math.trunc(match_end_offset),
     match_quality: mq,
   };
 }
@@ -63,13 +70,17 @@ export function extractApiErrorMessage(
   data: unknown,
   fallback: string,
 ): string {
+  const isLikelyInternalCode = (value: string): boolean =>
+    /^[A-Z0-9_]+$/.test(value);
   if (
     typeof data === "object" &&
     data !== null &&
     "error" in data &&
     typeof (data as { error?: { message?: string } }).error?.message === "string"
   ) {
-    return (data as { error: { message: string } }).error.message;
+    const message = (data as { error: { message: string } }).error.message.trim();
+    if (!message || isLikelyInternalCode(message)) return fallback;
+    return message;
   }
   return fallback;
 }

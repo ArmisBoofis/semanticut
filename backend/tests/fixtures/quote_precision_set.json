@@ -1,0 +1,40 @@
+[
+  {
+    "query": "we start by defining the data model",
+    "expected_start_ts": 31.0,
+    "tolerance_seconds": 5.0,
+    "micro_segments": [
+      {
+        "start_ts": 24.0,
+        "text": "in this section we discuss constraints and tradeoffs"
+      },
+      {
+        "start_ts": 31.0,
+        "text": "we start by defining the data model for the service"
+      },
+      {
+        "start_ts": 39.0,
+        "text": "then we move to indexes and query optimization"
+      }
+    ]
+  },
+  {
+    "query": "the fallback keeps the app stable",
+    "expected_start_ts": 87.0,
+    "tolerance_seconds": 5.0,
+    "micro_segments": [
+      {
+        "start_ts": 80.0,
+        "text": "errors can happen when upstream answers are malformed"
+      },
+      {
+        "start_ts": 87.0,
+        "text": "the fallback keeps the app stable for degraded matches"
+      },
+      {
+        "start_ts": 96.0,
+        "text": "finally we return a normalized response to the client"
+      }
+    ]
+  }
+]

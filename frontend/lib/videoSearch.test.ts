@@ -52,6 +52,27 @@ describe("parseSearchSuccess", () => {
       }),
     ).toBe(null);
   });
+
+  it("accepts payload without macro context and offsets", () => {
+    expect(
+      parseSearchSuccess({
+        start_ts: 12,
+        end_ts: 20,
+        text: "bonjour",
+        confidence: 0.87,
+        match_quality: "partial",
+      }),
+    ).toEqual({
+      start_ts: 12,
+      end_ts: 20,
+      text: "bonjour",
+      confidence: 0.87,
+      macro_context_text: null,
+      match_start_offset: null,
+      match_end_offset: null,
+      match_quality: "partial",
+    });
+  });
 });
 
 describe("extractApiErrorMessage", () => {
@@ -66,6 +87,15 @@ describe("extractApiErrorMessage", () => {
 
   it("uses fallback when missing", () => {
     expect(extractApiErrorMessage({}, "fallback")).toBe("fallback");
+  });
+
+  it("uses fallback when message looks like internal code", () => {
+    expect(
+      extractApiErrorMessage(
+        { error: { code: "UPSTREAM_ERROR", message: "UPSTREAM_TIMEOUT" } },
+        "fallback",
+      ),
+    ).toBe("fallback");
   });
 });
 

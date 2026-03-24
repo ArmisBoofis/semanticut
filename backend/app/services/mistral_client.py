@@ -57,6 +57,15 @@ class SentenceAnchorResult:
     status: str  # "ok" | "no_match"
 
 
+@dataclass(frozen=True)
+class SentenceAnchorIntentResult:
+    """LLM phase: sentence anchor + inferred intent from structured context."""
+
+    intent: str  # "quote" | "scene"
+    anchor: str | None
+    status: str  # "ok" | "no_match"
+
+
 def _build_mistral():
     """SDK client as in Mistral docs (`mistralai.client.Mistral` exposes `audio.transcriptions`)."""
     from mistralai.client import Mistral
@@ -303,6 +312,63 @@ def select_sentence_anchor_from_structured_context(
     if len(first_line) > 300:
         return SentenceAnchorResult(anchor=None, status="no_match")
     return SentenceAnchorResult(anchor=first_line, status="ok")
+
+
+def select_sentence_anchor_intent_from_structured_context(
+    *,
+    user_query: str,
+    structured_context_json: str,
+) -> SentenceAnchorIntentResult:
+    """
+    Mistral chat: infer quote-vs-scene intent and return one sentence anchor.
+    Contract is strict JSON for deterministic backend parsing.
+    """
+    max_chars = 72_000
+    body = structured_context_json
+    if len(body) > max_chars:
+        body = body[:max_chars] + "\n\n{\"truncated\": true}"
+
+    prompt = (
+        "Tu reçois une question utilisateur et un contexte JSON structuré de macro->micro segments.\n"
+        "Ta mission: inférer l'intent et retourner UNE phrase d'ancrage pertinente.\n"
+        "Règles:\n"
+        "- intent = \"quote\" uniquement si la requête vise explicitement une citation/formulation exacte; sinon \"scene\" par défaut.\n"
+        "- Si intent=\"scene\", anchor doit pointer le debut naturel de la scene/la reponse (pas une coupe au milieu).\n"
+        "- anchor doit être une phrase brève trouvable dans le contexte (proche lexicalement pour quote).\n"
+        "- Si rien de pertinent: status=\"no_match\" et anchor vide.\n"
+        "- Réponds STRICTEMENT avec un unique JSON:\n"
+        '{"intent":"quote"|"scene","anchor":"<texte ou vide>","status":"ok"|"no_match"}\n'
+        "- Aucun markdown, aucun texte additionnel.\n\n"
+        f"Question:\n{user_query.strip()}\n\n"
+        f"Contexte JSON:\n{body}\n"
+    )
+
+    client = _build_mistral()
+    model = settings.mistral_anchor_model
+    max_tokens = settings.mistral_anchor_max_tokens
+    res = client.chat.complete(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+    )
+    raw = getattr(res, "choices", None) or []
+    if not raw:
+        raise RuntimeError("empty chat response")
+    msg = getattr(raw[0], "message", None)
+    content = str(getattr(msg, "content", "") or "").strip()
+    data = _parse_json_object_from_chat_content(content)
+
+    intent = str(data.get("intent", "scene")).lower()
+    if intent not in ("quote", "scene"):
+        intent = "scene"
+    status = str(data.get("status", "no_match")).lower()
+    anchor_raw = data.get("anchor")
+    anchor = str(anchor_raw).strip() if anchor_raw is not None else ""
+    if status != "ok" or not anchor:
+        return SentenceAnchorIntentResult(intent=intent, anchor=None, status="no_match")
+    if len(anchor) > 300:
+        return SentenceAnchorIntentResult(intent=intent, anchor=None, status="no_match")
+    return SentenceAnchorIntentResult(intent=intent, anchor=anchor, status="ok")
 
 
 def embed_texts_batch(texts: list[str]) -> list[list[float]]:
