@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-03-21T10:48:03Z"
-last_updated: "2026-03-22T12:30:00Z"
+last_updated: "2026-03-24T12:30:00Z"
 project: semanticut
 project_key: NOKEY
 tracking_system: file-system
@@ -48,19 +48,20 @@ development_status:
   1-3-dockerized-nextjs-frontend-wired-into-the-stack: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-admin-can-register-videos-for-ingestion: done
   2-2-admin-page-listing-all-videos-with-ingestion-status: done
   2-3-admin-can-remove-videos-and-associated-ingestion-data: done
   2-4-asynchronous-ingestion-pipeline-for-registered-videos: done
   2-5-admin-can-register-videos-via-admin-ui-upload-form: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
-  epic-3: backlog
-  3-1-primary-page-lists-only-fully-ingested-videos: backlog
-  3-2-natural-language-search-returns-best-matching-segment: backlog
-  3-3-quote-precise-seeking-for-exact-phrase-queries: backlog
-  3-4-scene-coherent-seeking-for-vague-queries: backlog
+  epic-3: in-progress
+  3-1-primary-page-lists-only-fully-ingested-videos: done
+  3-2-natural-language-search-returns-best-matching-segment: done
+  3-3-multi-scale-transcript-indexing-with-hybrid-macro-retrieval-and-direct-llm-timestamp-extraction: done
+  3-4-quote-precise-seeking-for-exact-phrase-queries: backlog
+  3-5-scene-coherent-seeking-for-vague-queries: backlog
   epic-3-retrospective: optional
 
   epic-4: backlog

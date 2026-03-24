@@ -33,7 +33,7 @@ classification:
 
 Semanticut is a proof-of-concept web application that lets a user jump directly to the right moment in a video by typing a natural-language description of what they remember. It is designed primarily for a Mistral reviewer and optimized to demonstrate an end-to-end, backend-heavy pipeline built with the official Mistral SDK and models: Voxtral transcription, semantic chunking, Mistral embeddings, and fast vector retrieval in PostgreSQL (`pgvector`), served through a FastAPI + Pydantic backend and a browser UI.
 
-The product promise is: **“Come with a vague memory. Get a precise timestamp.”** For **quote-like queries**, the app should seek quickly and precisely to the correct timestamp. For **vague scene descriptions**, it should return a result that starts at the beginning of the relevant scene (avoiding “cutting a scene in half”), creating a better viewing experience and demonstrating UX-aware retrieval.
+The product promise is: **“Come with a vague memory. Get a precise timestamp.”** For **quote-like queries**, the app should seek quickly and precisely to the correct timestamp. For **vague scene descriptions**, it should return a result that starts at the beginning of the relevant scene (avoiding “cutting a scene in half”), creating a better viewing experience and demonstrating UX-aware retrieval. **Retrieval** combines **macro/micro embeddings** with a **Mistral LLM** step that reads **shortlisted macro text**, infers **quote vs scene** intent (**scene** is the default when the query does not target a specific sentence word-for-word), returns a **verbatim anchor** from that text, and **refines** the jump with a **second embedding** over **micro** segments scoped to the selected macros.
 
 ### What Makes This Special
 
@@ -92,10 +92,12 @@ The “why now” is that speech-to-text quality and the surrounding AI stack ha
 - Video selection: user selects a specific video to search within.
 - Ingestion pipeline (async): upload video → async processing with progress → searchable index ready.
 - Admin registration: an admin can register a video for ingestion **via the web UI** (admin page), not only via the API, so a reviewer can complete setup without HTTP tools.
-- Search + jump: natural-language search over transcript; jump behavior that satisfies:
-  - ≤ 10 seconds end-to-end, and
-  - Quote precision within ± 5 seconds.
-- Vague query “scene-start” handling: return a coherent start point (no sentence cuts) within 30 seconds of the similarity peak.
+- Search + jump: natural-language search over transcript using **multi-scale** indexing (**macro** + **micro** structure) with this **pipeline**: (1) run **hybrid retrieval** on macro text (**dense embeddings + BM25 lexical**) and fuse ranks with **RRF**; (2) keep the top macro candidates (default top 10) as **structured macro→micro context**; (3) send that context to a **Mistral LLM** that applies **quote vs scene** guidance (**scene** = default for vague queries; **quote** for exact wording) and returns a single best **micro start timestamp** (`start` float); (4) map that output to API seek fields (`start_ts`, `end_ts`, snippet) plus **macro context + highlighted micro span** for trust. **No secondary anchor re-vectorization loop** is required in the final decision path. Jump behavior should still target:
+  - ≤ 10 seconds end-to-end (or documented trade-offs if the LLM step approaches the budget), and
+  - Quote precision within ± 5 seconds where the query is quote-like.
+- **Tunables (environment):** **macro** grouping target in **word**-like units (primary: **words**, or tokenizer units **close to words** — documented in architecture), hybrid retrieval configuration (**RRF** constant and macro context top-K), and any BM25/index tuning values used by the search layer.
+- Search result presentation: after a match, the UI shows **macro-level transcript context** with the **fine / micro** span **visually highlighted** inside it — trust comes from **context + precise span**, not from a misleading similarity percentage alone (tiered or relative feedback per UX spec).
+- Vague query “scene” handling: **scene-style** recall is the **default** when the query is not word-specific; the LLM should prefer **coherent** anchors (e.g. **start** of the relevant block or a **representative** line), subject to the **30 seconds** / boundary rules in success criteria.
 - Deployment: one-command Docker Compose setup; migrations via Alembic; stable DB schema.
 
 ### Growth Features (Post-MVP)

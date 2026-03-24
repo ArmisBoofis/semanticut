@@ -276,7 +276,7 @@ The defining experience is **“describe the moment in plain language → get ta
 
 - **Pattern mix:** **Established** patterns dominate—**single-line query**, **submit**, **HTML5 video**, **time readout**. **Novelty** is **under the hood** (vector retrieval + chunking), not **new gestures**.
 - **Education:** Minimal—**scope** (“this video”) and **readiness** (indexed vs not) are the **main** concepts to **teach** through **UI**, not a **tutorial**.
-- **Unique twist:** **Search-first** layout with **player as proof**—the **result** is **playback**, not a **link** or **snippet only**.
+- **Unique twist:** **Search-first** layout with **player as proof**—the **result** is **playback**, not a **link** or a **detached** one-line snippet: when **multi-scale** search is used, pair **playback** with a **macro** transcript block and the **fine** span **highlighted** inside it (see **`JumpFeedback`**).
 
 ### 2.5 Experience Mechanics
 
@@ -294,7 +294,7 @@ The defining experience is **“describe the moment in plain language → get ta
 
 - **While searching:** **Non-blocking** “Searching…” state (spinner + **short** copy); optional **elapsed** time if waits approach **SLA** limits.
 - **On success:** **Visible** seek + **playback**; optional **inline** “Jumped to **MM:SS**” (or **range**) to **anchor** trust.
-- **On failure / low confidence:** **Plain** message + **retry** / **rephrase**—no **raw scores** unless **explicitly** in debug mode.
+- **On failure / low confidence:** **Plain** message + **retry** / **rephrase**—no **raw scores** unless **explicitly** in debug mode. If match strength is shown, prefer **tiered labels** (e.g. strong / partial) or **relative** cues over a **numeric percentage** that reads as precise when the model cannot support it.
 
 **4. Completion**
 
@@ -422,10 +422,10 @@ flowchart TD
 ```mermaid
 flowchart TD
   A[User types NL query] --> B[Submit — Enter / button]
-  B --> C[UI: Searching… active state]
+  B --> C[UI: Searching… — may run longer than a single vector query]
   C --> D{API result}
   D -->|Match + timestamp| E[Seek player + autoplay]
-  E --> F[Show Jumped to MM:SS — trust anchor]
+  E --> F[Show macro excerpt + fine span highlighted + MM:SS timestamp]
   D -->|No confident match| G[Message: try rephrase + examples]
   D -->|Error| H[Message: retry + support detail if safe]
   G --> A
@@ -439,7 +439,7 @@ flowchart TD
 ### Journey patterns
 
 - **State-gated primary action:** **Search** only when **Ready** (same pattern as **disabled** until **ingest** completes).
-- **Progressive disclosure:** **Technical** detail (**stages**) on **ingest**; **no raw scores** on **search** for MVP.
+- **Progressive disclosure:** **Technical** detail (**stages**) on **ingest**; **no raw scores** on **search** for MVP. When **multi-scale** retrieval is used (hybrid macro retrieval + **LLM** direct timestamp extraction), make the outcome **legible** in the UI: show the **full macro** (coarse context) and **highlight** the **fine / micro** span inside it — **trust** comes from **context + precise span**, not a fake-precision **percentage**. The **Searching…** state may last **slightly longer** than a naive single embedding search; keep **active** feedback (spinner / disabled submit) so the wait never feels **frozen**.
 - **Consistent recovery:** **Retry** on **transient** failures; **re-upload** on **persistent** ingest failure; **rephrase** on **weak** retrieval.
 - **Feedback triad:** **Working** → **success with anchor** (`MM:SS`) → **actionable** **failure**.
 
@@ -521,11 +521,11 @@ flowchart TD
 
 #### `JumpFeedback` (inline)
 
-**Purpose:** **Anchor trust** after a match—**“Jumped to MM:SS”** (and optional **short** excerpt later).  
+**Purpose:** **Anchor trust** after a match—**“Jumped to MM:SS”** plus, when **multi-scale** search is available, a **result excerpt** that shows **macro context** with the **fine match highlighted** inside it (not the micro snippet alone).  
 **Usage:** Between **player** and **search** or adjacent to **time** readout.  
-**Anatomy:** **Text** + **optional** **icon**; **muted** styling (not a **banner**).  
+**Anatomy:** **Timestamp** line (trust anchor) + **paragraph** for **macro** transcript with **`<mark>`** or styled **span** around the **micro** span (distinct background; not **color-only**); **no** misleading **numeric similarity %** as the primary trust signal — **tiered** or **relative** feedback if needed (see **On failure / low confidence** above).  
 **States:** `hidden` (no successful jump yet), `visible` (last jump), `cleared` on new search start (optional).  
-**Accessibility:** **aria-live="polite"** on success update so **screen reader** users hear the **timestamp**.
+**Accessibility:** **aria-live="polite"** on success update so **screen reader** users hear the **timestamp**; associate the **highlight** with a short **French** label if needed (e.g. **« passage correspondant »** via **`aria-describedby`**).
 
 ### Component Implementation Strategy
 

@@ -26,8 +26,9 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 - Single-video selection and ingestion for semantic search.
 - Async ingestion pipeline: audio extraction → Voxtral transcription → context-aware chunking → embedding with Mistral models → storage in PostgreSQL + pgvector.
 - Natural-language search that:
-  - For quote-like queries, seeks to within ±5 seconds of the correct moment.
-  - For vague scene descriptions, jumps to a coherent scene start within 30 seconds of the similarity peak and aligned to sentence boundaries.
+  - Uses **hybrid macro retrieval** (**dense embeddings + BM25 lexical + RRF fusion**) to build top macro context, then sends structured macro→micro JSON context to a **Mistral LLM** that infers **quote vs scene** intent (**scene** = default when the query is vague and does not target specific wording) and returns a **single float timestamp** for seek.
+  - For **quote-like** queries, seeks to within ±5 seconds of the correct moment (LLM should classify **quote** intent and anchor precise wording when present in the shortlisted text).
+  - For **vague scene** descriptions, jumps to a **coherent** anchor (often scene / block **start** or representative line) within 30 seconds of the similarity peak and aligned to sentence boundaries where possible.
 - Web UI (e.g., Next.js) that lets the user select a video, observe ingestion progress, enter queries, and watch the player seek/play to the selected timestamp.
 - FastAPI + Pydantic backend exposing ingestion, status, and search endpoints.
 - Reviewer can go from repo checkout to first successful search-and-jump within about 10 minutes on a demo video.
@@ -60,7 +61,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 - Async ingestion and progress tracking across API, DB, and UI layers.
 - Performance of vector search and ingestion for demo-scale datasets.
-- Chunking and scene-boundary strategy that balances UX coherence with retrieval accuracy.
+- Chunking and scene-boundary strategy that balances UX coherence with retrieval accuracy; **multi-scale** indexing (macro + micro segments) so coarse semantic search uses enough context while micro timestamps stay precise.
 - Basic observability (logs/metrics) for debugging ingestion and search behavior in a demo context.
 - Clear modular boundaries so reviewers can easily understand and navigate the codebase.
 
@@ -158,8 +159,9 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
 - Core tables and concerns:
   - `videos`: video metadata (id, label, duration, storage path, created_at).
   - `ingestion_jobs`: per-video ingestion jobs with status, phase, progress percentage, timestamps, and error fields.
-  - `transcript_segments`: per-video segments with `start_ts`, `end_ts`, raw text, and chunking metadata.
-  - `embeddings`: vector representations associated with segments (either in a dedicated table or as a `vector` column on `transcript_segments`).
+  - `transcript_segments`: per-video **micro** segments with `start_ts`, `end_ts`, raw text, and chunking metadata (precise seek targets; typically aligned to ASR segment boundaries).
+  - `transcript_macro_segments` (or equivalent): **macro** units grouping consecutive micro segments for **context-rich** embeddings used in **phase-1** macro retrieval; linked to child micro rows. **Macro size** is driven by a **configurable target in word-like units** (primary: **word count**; optional **token** counts if mapped to a tokenizer with **units close to words** — document the chosen unit in `Settings` / `.env.example`).
+  - `embeddings`: vector representations associated with segments (either in a dedicated table or as a `vector` column on `transcript_segments` and macro tables); **cosine distance** on normalized Mistral vectors remains the default retrieval metric unless evaluation proves otherwise.
 - No additional caching layer for search; all retrieval goes directly through pgvector queries over the embeddings.
 
 ### Authentication & Security
@@ -175,7 +177,7 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
   - `POST /videos`: register and start ingestion for a video (uploaded file or referenced local path).
   - `GET /videos`: list videos and their ingestion status.
   - `GET /videos/{id}/status`: detailed ingestion job status and progress.
-  - `POST /videos/{id}/search`: accept a query string and return the best-matching segment, including `start_ts`, `end_ts`, and text snippet.
+  - `POST /videos/{id}/search`: accept a query string and return the best-matching segment for playback (`start_ts`, `end_ts`, fine-match `text`) plus **`macro_context_text`** (full coarse unit covering the result) and **character offsets** into that string for the fine span — so the client can render **macro block + highlighted micro** without guessing concatenation. **Server-side retrieval** implements: **(1)** dense macro retrieval on embeddings + BM25 lexical retrieval on macro text; **(2)** rank fusion via **RRF** (default `k=60`) and top-K context packaging (default 10 macros); **(3)** **Mistral chat** completion over structured macro→micro JSON context with instructions for **quote vs scene** behavior; **(4)** strict parsing/validation of a timestamp-only output (`start` float), then response assembly including **tiered** `match_quality` / similar (no misleading raw % as primary trust).
 - Frontend polls `GET /videos/{id}/status` on an interval while ingestion is running; no WebSockets/SSE.
 
 ### Frontend Architecture
@@ -201,6 +203,15 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
   - `web`: Next.js frontend.
 - Environment configuration through `.env` / `.env.local` files (DB connection string, Mistral API key, ports).
 - Basic structured logging for API requests, ingestion pipeline phases, and search queries; no full monitoring stack.
+
+### Search & macro configuration (environment)
+
+Tune without code changes (`backend/app/config.py` and `.env.example`):
+
+- **Macro target size:** `TRANSCRIPT_MACRO_TARGET_MODE` (`words` default, `chars` optional), `TRANSCRIPT_MACRO_TARGET_WORDS`, `TRANSCRIPT_MACRO_TARGET_CHARS`.
+- **Hybrid retrieval:** `SEARCH_MACRO_TOP_K` (context candidates sent to LLM), `SEARCH_RRF_K` (RRF constant; default 60), optional dense/BM25 weighting/tuning knobs as implemented.
+- **Lexical retrieval:** BM25 index/search settings for `macro_text_content` (documented with backend search service configuration).
+- **Mistral extractor:** `MISTRAL_ANCHOR_MODEL`, `MISTRAL_ANCHOR_MAX_TOKENS` (or equivalent extractor vars) for timestamp-only chat completion.
 
 ### Decision Impact Analysis
 
@@ -229,7 +240,7 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
 
 **Database Naming Conventions:**
 - Tables use **lowercase plural with underscores**:
-  - `videos`, `ingestion_jobs`, `transcript_segments`, `embeddings`.
+  - `videos`, `ingestion_jobs`, `transcript_segments`, `transcript_macro_segments` (or equivalent), `embeddings`.
 - Columns use **snake_case**:
   - `video_id`, `start_ts`, `end_ts`, `ingestion_status`, `created_at`.
 - Foreign keys use `<referenced_table>_id`:
@@ -267,8 +278,9 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
 
 **API Response Formats:**
 - **Success responses** return a direct payload, without a wrapper:
-  - Example search response:
-    - `{ "start_ts": 123.45, "end_ts": 150.0, "text": "...", "confidence": 0.92 }`
+  - Example search response (multi-scale; fine `text` is the micro span; `macro_context_text` is the full coarse unit for UI context):
+    - `{ "start_ts": 123.45, "end_ts": 125.2, "text": "…fine micro snippet…", "macro_context_text": "…full macro transcript…", "match_start_offset": 42, "match_end_offset": 68, "confidence": 0.92 }`
+  - Offsets are computed server-side on the exact `macro_context_text` string shipped in JSON (avoid ambiguous client substring search when micro text repeats). Optional fields may be omitted in legacy/single-scale fallbacks if documented.
 - **Error responses** are wrapped with an `error` object:
   - `{ "error": { "code": "INGESTION_NOT_READY", "message": "Ingestion is still running for this video." } }`
 

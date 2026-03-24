@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.transcript_macro_segment import TranscriptMacroSegment
 from app.models.transcript_segment import TranscriptSegment
 
 # Primary keys use UUID (v4) — stable public identifiers for REST and joins across Epic 2+.
@@ -46,6 +47,11 @@ class Video(Base):
         back_populates="video",
         cascade="all, delete-orphan",
         order_by=TranscriptSegment.chunk_index,
+    )
+    transcript_macro_segments: Mapped[list[TranscriptMacroSegment]] = relationship(
+        back_populates="video",
+        cascade="all, delete-orphan",
+        order_by=TranscriptMacroSegment.macro_index,
     )
 
 

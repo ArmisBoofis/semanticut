@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PrimaryReadyVideos } from "@/components/home/PrimaryReadyVideos";
 import { fetchBackendHealth } from "@/lib/fetchBackendHealth";
 import { fr } from "@/lib/strings";
 
@@ -9,7 +10,7 @@ export default async function Home() {
   const health = await fetchBackendHealth();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-6 px-6 py-16">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-6 py-16">
       <div className="flex items-start justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">{fr.appTitle}</h1>
         <Link
@@ -29,6 +30,9 @@ export default async function Home() {
         <p className="text-base leading-relaxed">
           {health.ok ? fr.backendOk : fr.backendUnavailable}
         </p>
+      </section>
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+        <PrimaryReadyVideos />
       </section>
     </main>
   );

@@ -9,6 +9,35 @@ export const fr = {
   backendUnavailable:
     "API : indisponible ou erreur. Vérifiez que les services Docker sont démarrés.",
   homeLinkAdmin: "Administration",
+  homeReadyVideosHeading: "Vidéos prêtes pour la recherche",
+  homeReadyVideosHelper:
+    "Seules les vidéos dont l’ingestion est terminée sont disponibles ici.",
+  homeReadyVideosLoading: "Chargement des vidéos prêtes…",
+  homeReadyVideosError:
+    "Impossible de charger les vidéos. Vérifiez l’API puis réessayez.",
+  homeReadyVideosEmpty:
+    "Aucune vidéo prête pour la recherche. Lancez l’ingestion depuis la page Administration.",
+  homeSearchHeading: "Recherche sémantique",
+  homeSearchQueryLabel: "Requête",
+  homeSearchQueryPlaceholder: "Décrivez ce que vous cherchez…",
+  homeSearchSubmit: "Rechercher",
+  homeSearchSubmitting: "Recherche en cours…",
+  homeSearchNoVideoSelected:
+    "Sélectionnez une vidéo prête dans la liste ci-dessus pour lancer une recherche.",
+  homeSearchSnippetTitle: "Extrait trouvé",
+  /** Full coarse context around the fine match (two-pass retrieval). */
+  homeSearchMacroContextTitle: "Contexte oral",
+  homeSearchMatchQualityStrong: "Pertinence : correspondance forte",
+  homeSearchMatchQualityPartial: "Pertinence : correspondance partielle",
+  homeSearchMatchQualityWeak: "Pertinence : correspondance faible",
+  /** Screen reader hint for the highlighted fine span inside macro text. */
+  homeSearchPassageHighlightAria: "Passage retenu pour la lecture",
+  homeSearchPlaybackFromPrefix: "Lecture à partir de ",
+  homeSearchNoMatch:
+    "Aucun passage pertinent trouvé. Reformulez ou essayez une autre vidéo.",
+  homeSearchMalformedResponse: "Réponse serveur inattendue.",
+  homeSearchGenericError:
+    "La recherche a échoué. Vérifiez l’API puis réessayez.",
   adminTitle: "Vidéos enregistrées",
   adminSubtitle: "État d’ingestion et progression",
   adminBackHome: "Accueil",

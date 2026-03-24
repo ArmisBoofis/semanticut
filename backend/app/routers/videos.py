@@ -1,8 +1,9 @@
+import mimetypes
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from app.deps import get_db_session
 from app.errors import AppError
@@ -11,11 +12,15 @@ from app.schemas.video import (
     VideoCreateRequest,
     VideoIngestionStatusResponse,
     VideoListItem,
+    VideoSearchMatchResponse,
+    VideoSearchRequest,
 )
-from app.services.ingestion_service import get_ingestion_status_payload
+from app.services.ingestion_service import get_ingestion_status_payload, resolve_video_file_path
+from app.services.search_service import search_best_segment
 from app.services.video_service import (
     create_video_with_job,
     delete_video,
+    get_video_by_id,
     ingestion_phase_for_video,
     ingestion_progress_percent_for_video,
     ingestion_status_for_video,
@@ -97,6 +102,40 @@ async def get_video_ingestion_status(
     if payload is None:
         raise AppError("NOT_FOUND", "video not found", 404)
     return VideoIngestionStatusResponse(**payload)
+
+
+@router.get(
+    "/videos/{video_id}/file",
+    response_class=FileResponse,
+)
+async def get_video_file(
+    video_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> FileResponse:
+    """Stream the registered video file for browser playback (local/demo)."""
+    video = await get_video_by_id(session, video_id)
+    path = resolve_video_file_path(video.storage_path)
+    if not path.is_file():
+        raise AppError("NOT_FOUND", "fichier vidéo introuvable", 404)
+    media_type, _ = mimetypes.guess_type(str(path))
+    return FileResponse(
+        path,
+        media_type=media_type or "application/octet-stream",
+        filename=f"{video.label}{path.suffix}",
+    )
+
+
+@router.post(
+    "/videos/{video_id}/search",
+    response_model=VideoSearchMatchResponse,
+)
+async def search_video(
+    video_id: UUID,
+    body: VideoSearchRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> VideoSearchMatchResponse:
+    """Return the best-matching transcript segment for a natural-language query."""
+    return await search_best_segment(session, video_id, body.query)
 
 
 @router.get("/videos", response_model=list[VideoListItem])

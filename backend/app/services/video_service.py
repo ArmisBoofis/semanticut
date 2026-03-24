@@ -179,6 +179,16 @@ async def delete_video(session: AsyncSession, *, video_id: UUID) -> None:
     await session.delete(video)
 
 
+async def get_video_by_id(session: AsyncSession, video_id: UUID) -> Video:
+    """Load a single video or raise NOT_FOUND."""
+    stmt = select(Video).where(Video.id == video_id)
+    result = await session.execute(stmt)
+    video = result.scalars().first()
+    if video is None:
+        raise AppError("NOT_FOUND", "video not found", 404)
+    return video
+
+
 async def list_videos(session: AsyncSession) -> list[Video]:
     stmt = (
         select(Video)

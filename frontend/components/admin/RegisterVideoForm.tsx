@@ -50,7 +50,7 @@ export function RegisterVideoForm({ onRegistered }: Props) {
         });
         const data: unknown = await res.json().catch(() => null);
         if (!res.ok) {
-          let message = fr.adminRegisterError;
+          let message: string = fr.adminRegisterError;
           if (
             typeof data === "object" &&
             data !== null &&

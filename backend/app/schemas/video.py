@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -70,3 +71,43 @@ class VideoListItem(BaseModel):
         description="Progress 0–100 from `ingestion_jobs.progress_percent` when set.",
     )
     created_at: datetime
+
+
+class VideoSearchRequest(BaseModel):
+    """Body for POST /videos/{video_id}/search."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(..., min_length=1, max_length=4000)
+
+
+class VideoSearchMatchResponse(BaseModel):
+    """200 response for semantic search — fine micro segment + macro context for UI."""
+
+    start_ts: float = Field(..., description="Fine (micro) segment start in seconds from video start.")
+    end_ts: float = Field(..., description="Fine (micro) segment end in seconds from video start.")
+    text: str = Field(..., description="Fine segment text (seek/snippet).")
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Derived from cosine distance on the fine pass (higher is better).",
+    )
+    macro_context_text: str = Field(
+        ...,
+        description="Full coarse unit text; micro highlight is a slice via offsets.",
+    )
+    match_start_offset: int = Field(
+        ...,
+        ge=0,
+        description="Start index into macro_context_text for the fine span (Python str semantics).",
+    )
+    match_end_offset: int = Field(
+        ...,
+        ge=0,
+        description="End index into macro_context_text (exclusive) for the fine span.",
+    )
+    match_quality: Literal["strong", "partial", "weak"] = Field(
+        ...,
+        description="Tiered relevance (avoids misleading percentage scoreboards).",
+    )

@@ -17,9 +17,15 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.ingestion import phases
 from app.ingestion.cancellation import clear_cancel_request, is_cancel_requested
+from app.models.transcript_macro_segment import TranscriptMacroSegment
 from app.models.transcript_segment import TranscriptSegment
 from app.models.video import IngestionJob, Video
 from app.services import mistral_client
+from app.services.macro_grouping import (
+    MicroSpan,
+    group_micros_into_macros,
+    group_micros_into_macros_by_words,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +370,40 @@ async def run_ingestion_for_job(job_id: UUID, video_id: UUID) -> None:
                 )
             return
 
+        micro_spans = [
+            MicroSpan(chunk_index=idx, start_ts=t0, end_ts=t1, text=text)
+            for idx, (t0, t1, text) in enumerate(chunks)
+        ]
+        if settings.transcript_macro_target_mode == "chars":
+            macro_groups = group_micros_into_macros(
+                micro_spans,
+                target_chars=settings.transcript_macro_target_chars,
+            )
+        else:
+            macro_groups = group_micros_into_macros_by_words(
+                micro_spans,
+                target_words=settings.transcript_macro_target_words,
+            )
+        macro_texts = [g.text for g in macro_groups]
+        try:
+            macro_embeddings = await asyncio.to_thread(
+                mistral_client.embed_texts_batch,
+                macro_texts,
+            )
+            if len(macro_embeddings) != len(macro_groups):
+                raise RuntimeError("macro embedding count does not match macro group count")
+        except Exception as exc:
+            mistral_client.log_mistral_error(exc, context="macro_embeddings")
+            async with async_session_maker() as session:
+                await _fail_job(
+                    session,
+                    job_id,
+                    code="EMBEDDING_FAILED",
+                    message="Macro embedding generation failed. Check server logs.",
+                    phase=phases.PHASE_EMBEDDING,
+                )
+            return
+
         async with async_session_maker() as session:
             if not await video_exists(session, video_id):
                 return
@@ -378,6 +418,9 @@ async def run_ingestion_for_job(job_id: UUID, video_id: UUID) -> None:
         async with async_session_maker() as session:
             if not await video_exists(session, video_id):
                 return
+            await session.execute(
+                delete(TranscriptMacroSegment).where(TranscriptMacroSegment.video_id == video_id)
+            )
             await session.execute(delete(TranscriptSegment).where(TranscriptSegment.video_id == video_id))
             for idx, ((t0, t1, text), emb) in enumerate(zip(chunks, embeddings, strict=True)):
                 session.add(
@@ -387,6 +430,19 @@ async def run_ingestion_for_job(job_id: UUID, video_id: UUID) -> None:
                         start_ts=t0,
                         end_ts=t1,
                         text=text,
+                        embedding=emb,
+                    )
+                )
+            for g, emb in zip(macro_groups, macro_embeddings, strict=True):
+                session.add(
+                    TranscriptMacroSegment(
+                        video_id=video_id,
+                        macro_index=g.macro_index,
+                        micro_chunk_start=g.micro_chunk_start,
+                        micro_chunk_end=g.micro_chunk_end,
+                        start_ts=g.start_ts,
+                        end_ts=g.end_ts,
+                        text=g.text,
                         embedding=emb,
                     )
                 )
