@@ -8,8 +8,9 @@ import pytest
 from app.config import settings
 from app.services.search_service import (
     _adaptive_macro_shortlist,
+    _anchor_overlap_score,
     _build_structured_context_payload,
-    _pick_micro_from_timestamp,
+    _pick_micro_from_anchor,
 )
 
 
@@ -76,14 +77,33 @@ def test_build_structured_payload_includes_macro_and_micro_ids() -> None:
     assert payload["macros"][0]["micros"][0]["chunk_index"] == 8
 
 
-def test_pick_micro_from_timestamp_fallbacks_to_first_when_none() -> None:
+def test_pick_micro_from_anchor_fallbacks_to_first_when_none() -> None:
     macro = SimpleNamespace(id=uuid4())
-    m0 = SimpleNamespace(id=uuid4(), start_ts=5.0, end_ts=6.0)
-    m1 = SimpleNamespace(id=uuid4(), start_ts=7.0, end_ts=8.0)
-    seg, owner, micros = _pick_micro_from_timestamp(
+    m0 = SimpleNamespace(id=uuid4(), text="bonjour monde")
+    m1 = SimpleNamespace(id=uuid4(), text="autre segment")
+    seg, owner, micros = _pick_micro_from_anchor(
         macro_context=[(macro, [m0, m1])],
-        llm_start=None,
+        anchor_text=None,
     )
     assert seg is m0
     assert owner is macro
     assert micros == [m0, m1]
+
+
+def test_pick_micro_from_anchor_uses_lexical_overlap() -> None:
+    macro = SimpleNamespace(id=uuid4())
+    m0 = SimpleNamespace(id=uuid4(), text="nous allons parler de python")
+    m1 = SimpleNamespace(id=uuid4(), text="introduction au postgresql")
+    seg, owner, micros = _pick_micro_from_anchor(
+        macro_context=[(macro, [m0, m1])],
+        anchor_text="parler de python",
+    )
+    assert seg is m0
+    assert owner is macro
+    assert micros == [m0, m1]
+
+
+def test_anchor_overlap_score_prefers_containment() -> None:
+    contain = _anchor_overlap_score("bonjour le monde", "xx bonjour le monde yy")
+    partial = _anchor_overlap_score("bonjour le monde", "bonjour rapide")
+    assert contain > partial

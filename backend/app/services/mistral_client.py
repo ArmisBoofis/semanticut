@@ -49,6 +49,14 @@ class TimestampSelectionResult:
     status: str  # "ok" | "no_match"
 
 
+@dataclass(frozen=True)
+class SentenceAnchorResult:
+    """LLM phase: plain-text sentence anchor extracted from provided context."""
+
+    anchor: str | None
+    status: str  # "ok" | "no_match"
+
+
 def _build_mistral():
     """SDK client as in Mistral docs (`mistralai.client.Mistral` exposes `audio.transcriptions`)."""
     from mistralai.client import Mistral
@@ -202,12 +210,18 @@ def select_timestamp_from_structured_context(
 
     prompt = (
         "Tu reçois une question utilisateur et un contexte JSON structuré de macro->micro segments.\n"
-        "Objectif: retourner exactement UN timestamp `start` (float secondes) du meilleur micro segment.\n"
+        "Ta mission: identifier le micro segment qui répond le PLUS PRÉCISÉMENT à la question.\n"
+        "Objectif de sélection (priorité décroissante):\n"
+        "1) Pertinence sémantique directe: le segment doit répondre au coeur de la question.\n"
+        "2) Précision factuelle: privilégie le passage le plus spécifique (pas un contexte vague).\n"
+        "3) Si la requête ressemble à une citation, privilégie une correspondance lexicale forte.\n"
+        "4) Si aucun micro ne répond clairement, retourne no_match.\n"
         "Règles:\n"
-        "- Déduis implicitement quote vs scene: si doute => scene.\n"
-        "- Utilise uniquement les micro fournis.\n"
+        "- Déduis implicitement quote vs scene (si doute: scene).\n"
+        "- Utilise UNIQUEMENT les micros fournis dans le JSON.\n"
+        "- Ne retourne qu'un seul timestamp `start` (en secondes) du meilleur micro segment.\n"
         '- Réponds STRICTEMENT avec un unique objet JSON: {"start": <float>|null, "status":"ok"|"no_match"}\n'
-        "- Aucune autre clé, aucun markdown.\n\n"
+        "- Aucune autre clé, aucun texte, aucun markdown.\n\n"
         f"Question:\n{user_query.strip()}\n\n"
         f"Contexte JSON:\n{body}\n"
     )
@@ -238,6 +252,57 @@ def select_timestamp_from_structured_context(
     if start < 0:
         return TimestampSelectionResult(start=None, status="no_match")
     return TimestampSelectionResult(start=start, status="ok")
+
+
+def select_sentence_anchor_from_structured_context(
+    *,
+    user_query: str,
+    structured_context_json: str,
+) -> SentenceAnchorResult:
+    """
+    Mistral chat: infer quote-vs-scene intent from macro->micro JSON context and
+    return one short sentence anchor as plain text (no JSON output contract).
+    """
+    max_chars = 72_000
+    body = structured_context_json
+    if len(body) > max_chars:
+        body = body[:max_chars] + "\n\n{\"truncated\": true}"
+
+    prompt = (
+        "Tu reçois une question utilisateur et un contexte JSON structuré de macro->micro segments.\n"
+        "Ta mission: retourner UNE courte phrase d’ancrage extraite du contexte fourni.\n"
+        "Guidance:\n"
+        "- Si la requête ressemble à une citation exacte, choisis la phrase la plus proche lexicalement.\n"
+        "- Sinon, choisis une phrase qui démarre la scène/la réponse la plus pertinente.\n"
+        "- Utilise uniquement le contenu du contexte.\n"
+        "- Si aucun passage ne convient, réponds exactement: no_match\n"
+        "- Réponse attendue: texte brut uniquement (pas de JSON, pas de markdown).\n\n"
+        f"Question:\n{user_query.strip()}\n\n"
+        f"Contexte JSON:\n{body}\n"
+    )
+
+    client = _build_mistral()
+    model = settings.mistral_anchor_model
+    max_tokens = settings.mistral_anchor_max_tokens
+    res = client.chat.complete(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+    )
+    raw = getattr(res, "choices", None) or []
+    if not raw:
+        raise RuntimeError("empty chat response")
+    msg = getattr(raw[0], "message", None)
+    content = str(getattr(msg, "content", "") or "").strip()
+    if not content:
+        return SentenceAnchorResult(anchor=None, status="no_match")
+    first_line = content.splitlines()[0].strip().strip("\"'`")
+    lowered = first_line.lower()
+    if lowered in {"no_match", "none", "n/a"}:
+        return SentenceAnchorResult(anchor=None, status="no_match")
+    if len(first_line) > 300:
+        return SentenceAnchorResult(anchor=None, status="no_match")
+    return SentenceAnchorResult(anchor=first_line, status="ok")
 
 
 def embed_texts_batch(texts: list[str]) -> list[list[float]]:

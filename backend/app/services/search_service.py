@@ -1,8 +1,9 @@
-"""Semantic search: hybrid macro retrieval + structured context + direct LLM timestamp."""
+"""Semantic search: hybrid macro retrieval + structured context + LLM sentence anchor."""
 
 from __future__ import annotations
 
 import json
+import re
 from uuid import UUID
 
 from sqlalchemy import Float, cast, func, select
@@ -63,7 +64,7 @@ async def search_best_segment(
     video_id: UUID,
     query: str,
 ) -> VideoSearchMatchResponse:
-    """Hybrid macro retrieval + timestamp extraction; legacy micro-only without macros."""
+    """Hybrid macro retrieval + anchor extraction; legacy micro-only without macros."""
     q = query.strip()
     if not q:
         raise AppError("VALIDATION_ERROR", "query cannot be empty", 400)
@@ -146,7 +147,7 @@ async def _search_two_pass(
     query_embedding: list[float],
     user_query: str,
 ) -> VideoSearchMatchResponse:
-    """Dense + BM25 retrieval, RRF fusion, then direct timestamp extraction."""
+    """Dense + BM25 retrieval, RRF fusion, then plain-text anchor extraction."""
     fused_macros = await _hybrid_macro_retrieval(
         session=session,
         video_id=video_id,
@@ -164,21 +165,21 @@ async def _search_two_pass(
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     try:
-        ts_res = mistral_client.select_timestamp_from_structured_context(
+        anchor_res = mistral_client.select_sentence_anchor_from_structured_context(
             user_query=user_query,
             structured_context_json=payload_json,
         )
     except Exception as exc:
-        mistral_client.log_mistral_error(exc, context="search_timestamp_llm")
+        mistral_client.log_mistral_error(exc, context="search_sentence_anchor_llm")
         raise AppError(
             "UPSTREAM_ERROR",
-            "échec de l’analyse sémantique (timestamp)",
+            "échec de l’analyse sémantique (ancre)",
             502,
         ) from exc
 
-    seg, owning_macro, micros_in_macro = _pick_micro_from_timestamp(
+    seg, owning_macro, micros_in_macro = _pick_micro_from_anchor(
         macro_context=macro_ctx,
-        llm_start=ts_res.start if ts_res.status == "ok" else None,
+        anchor_text=anchor_res.anchor if anchor_res.status == "ok" else None,
     )
     if seg is None or owning_macro is None or micros_in_macro is None:
         raise AppError("NO_MATCH", "aucun passage pertinent trouvé pour cette requête", 404)
@@ -305,31 +306,53 @@ def _build_structured_context_payload(
     }
 
 
-def _pick_micro_from_timestamp(
+def _normalize_for_lexical_match(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text.lower())).strip()
+
+
+def _anchor_overlap_score(anchor: str, micro_text: str) -> float:
+    anchor_norm = _normalize_for_lexical_match(anchor)
+    micro_norm = _normalize_for_lexical_match(micro_text)
+    if not anchor_norm or not micro_norm:
+        return 0.0
+    if anchor_norm in micro_norm:
+        return 10_000.0 + len(anchor_norm)
+    if micro_norm in anchor_norm:
+        return 9_000.0 + len(micro_norm)
+    a_tokens = set(anchor_norm.split())
+    m_tokens = set(micro_norm.split())
+    if not a_tokens or not m_tokens:
+        return 0.0
+    overlap = len(a_tokens & m_tokens)
+    if overlap == 0:
+        return 0.0
+    return overlap / len(a_tokens)
+
+
+def _pick_micro_from_anchor(
     *,
     macro_context: list[tuple[TranscriptMacroSegment, list[TranscriptSegment]]],
-    llm_start: float | None,
+    anchor_text: str | None,
 ) -> tuple[TranscriptSegment | None, TranscriptMacroSegment | None, list[TranscriptSegment] | None]:
     if not macro_context:
         return None, None, None
-    if llm_start is None:
+    if not anchor_text:
         top_macro, top_micros = macro_context[0]
         return top_micros[0], top_macro, top_micros
-    best_seg: TranscriptSegment | None = None
-    best_macro: TranscriptMacroSegment | None = None
-    best_micros: list[TranscriptSegment] | None = None
-    best_d = float("inf")
+
+    best_match: tuple[float, TranscriptSegment, TranscriptMacroSegment, list[TranscriptSegment]] | None = None
     for macro, micros in macro_context:
         for seg in micros:
-            if seg.start_ts <= llm_start <= seg.end_ts:
-                return seg, macro, micros
-            d = abs(seg.start_ts - llm_start)
-            if d < best_d:
-                best_d = d
-                best_seg = seg
-                best_macro = macro
-                best_micros = micros
-    return best_seg, best_macro, best_micros
+            score = _anchor_overlap_score(anchor_text, seg.text)
+            if score <= 0:
+                continue
+            if best_match is None or score > best_match[0]:
+                best_match = (score, seg, macro, micros)
+    if best_match is not None:
+        _, seg, macro, micros = best_match
+        return seg, macro, micros
+    top_macro, top_micros = macro_context[0]
+    return top_micros[0], top_macro, top_micros
 
 
 async def _micro_confidence_against_query(

@@ -22,7 +22,7 @@ This document provides the complete epic and story breakdown for semanticut, dec
 
 FR1: User can select a specific video to search within.
 FR2: The system ingests a video asynchronously (audio extraction → Voxtral transcription → semantic chunking → embeddings with Mistral models → indexing in PostgreSQL + pgvector) and exposes ingestion progress.
-FR3: User can submit natural-language queries over the transcript, and the system seeks the video to the best-matching timestamp that satisfies the latency and accuracy constraints (implementation: **hybrid macro retrieval** with **dense + BM25 + RRF**, then **Mistral direct timestamp extraction** from structured macro→micro context — see Story **3.3**).
+FR3: User can submit natural-language queries over the transcript, and the system seeks the video to the best-matching timestamp that satisfies the latency and accuracy constraints (implementation: **hybrid macro retrieval** with **dense + BM25 + RRF**, then intent-aware Mistral extraction from structured macro→micro context using a unified sentence-anchor contract: quote-like queries select a matching quote sentence and scene-like queries select a scene-start sentence; both resolve lexically to final segment/timestamp — see Story **3.3**).
 FR4: For vague, scene-style queries, the system returns a start timestamp that:
 - Avoids cutting sentences (aligns to sentence/chunk boundaries), and
 - Starts a coherent scene within 30 seconds of the similarity peak.
@@ -58,7 +58,7 @@ NFR7: Reliability and reproducibility sufficient for a Mistral reviewer running 
   - `POST /videos` – register and start ingestion for a video.
   - `GET /videos` – list videos and their ingestion status.
   - `GET /videos/{video_id}/status` – detailed ingestion status and progress.
-  - `POST /videos/{video_id}/search` – accept a query string and return the best-matching segment for seek (`start_ts`, `end_ts`, fine-match text) plus **macro context** and highlight bounds when multi-scale indexing is active (see Story 3.3: **hybrid macro retrieval** + **Mistral direct timestamp extraction** from structured context); optional **tiered** match feedback instead of misleading raw percentages.
+  - `POST /videos/{video_id}/search` – accept a query string and return the best-matching segment for seek (`start_ts`, `end_ts`, fine-match text) plus **macro context** and highlight bounds when multi-scale indexing is active (see Story 3.3: **hybrid macro retrieval** + intent-aware Mistral extraction from structured context, with quote-anchor lexical resolution for quote queries); optional **tiered** match feedback instead of misleading raw percentages.
 - Frontend has:
   - A primary page combining video selection from fully ingested videos, search form, and video player that seeks to returned timestamps.
   - An admin page listing all videos (including ingesting ones), their ingestion status, and controls to remove videos.
@@ -328,7 +328,7 @@ So that I can quickly jump to the part I remember.
 **When** I submit a search
 **Then** the time from “submit query” to “player seek starts” is consistent with the p95 target (≤ 10 seconds, informally verified during testing).
 
-### Story 3.3: Multi-scale transcript indexing with hybrid macro retrieval and direct LLM timestamp extraction
+### Story 3.3: Multi-scale transcript indexing with hybrid macro retrieval and sentence-anchor LLM extraction
 
 As a user,
 I want semantic search to match my query using enough spoken context while still jumping to a precise timestamp,
@@ -343,7 +343,7 @@ So that results feel relevant and trustworthy, not arbitrary or over-confident.
 
 **Given** a fully ingested video and a natural-language query  
 **When** the backend handles `POST /videos/{video_id}/search`  
-**Then** retrieval uses: **(1)** hybrid macro retrieval on `macro_text_content` combining **dense** semantic ranking and **BM25** lexical ranking; **(2)** fuse rankings with **RRF** (configurable `k`, default 60) and keep top macro context entries (default top 10); **(3)** serialize structured macro→micro context (including micro ids, text, and start/end timestamps) for a **Mistral LLM** that infers **quote vs scene** intent and returns a **single float timestamp** (`start`) for the best micro segment; **(4)** map this deterministic output to seek fields and return snippet + **macro context + offsets** for highlight  
+**Then** retrieval uses: **(1)** hybrid macro retrieval on `macro_text_content` combining **dense** semantic ranking and **BM25** lexical ranking; **(2)** fuse rankings with **RRF** (configurable `k`, default 60) and keep top macro context entries (default top 10); **(3)** serialize structured macro→micro context (including micro ids, text, and start/end timestamps) for a **Mistral LLM** that infers **quote vs scene** intent; **(4)** apply a unified extraction contract where quote path returns a quote-matching sentence and scene path returns a scene-start sentence, then resolve final segment lexically in both paths; **(5)** map this deterministic output to seek fields and return snippet + **macro context + offsets** for highlight  
 **And** end-to-end latency remains aligned with the PRD p95 target (≤ 10 seconds from submit to playback start) in informal demo testing, or trade-offs are documented.
 
 **Given** a successful search response  
@@ -355,8 +355,8 @@ So that results feel relevant and trustworthy, not arbitrary or over-confident.
 **Then** the UI displays the **full macro segment** (coarse retrieval context) as readable text **and** **highlights** the **fine / micro** segment (the exact span used for the seek timestamp) **inside** that macro text — so the user sees surrounding speech and which sub-passage was chosen.
 
 **Given** stack constraints for the POC  
-**When** implementing hybrid retrieval and LLM timestamp extraction  
-**Then** **PostgreSQL + pgvector** with **cosine distance** on normalized Mistral embeddings is used for dense macro retrieval; lexical retrieval (BM25) is available for macro text; **Mistral** is used for the final timestamp extraction step per product constraint.
+**When** implementing hybrid retrieval and sentence-anchor LLM extraction  
+**Then** **PostgreSQL + pgvector** with **cosine distance** on normalized Mistral embeddings is used for dense macro retrieval; lexical retrieval (BM25) is available for macro text; **Mistral** is used for final extraction (sentence anchors for both quote-like and scene-like paths) per product constraint.
 
 **Given** operators tune the system  
 **When** they adjust environment variables  
@@ -368,7 +368,7 @@ As a user who remembers an exact quote,
 I want the app to seek within ±5 seconds of the true quote timestamp,
 So that I can jump precisely to the moment I recall.
 
-_Note (depends on 3.3): **Quote** behavior is driven by the hybrid-retrieval context and **LLM** timestamp extraction path classifying **quote** intent from structured macro→micro evidence._
+_Note (depends on 3.3): **Quote** behavior is driven by hybrid-retrieval context and an intent-aware **LLM** path that returns a quote anchor text, then resolves the final segment with lexical matching over shortlisted micro evidence._
 
 **Acceptance Criteria:**
 
@@ -391,7 +391,7 @@ As a user with a vague memory of a scene,
 I want the app to jump to the start of a coherent scene near the best-matching region,
 So that I avoid landing mid-sentence and the result feels natural for viewing.
 
-_Note (depends on 3.3): **Scene** is the **default** when the query is **vague** and does not repeat specific wording; the **LLM** selects a coherent timestamp from structured context (often near scene start or representative passage)._
+_Note (depends on 3.3): **Scene** is the **default** when the query is **vague** and does not repeat specific wording; the **LLM** selects a sentence that best represents the beginning of the requested scene from structured context, then lexical resolution maps it to final timestamp._
 
 **Acceptance Criteria:**
 

@@ -26,8 +26,10 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 - Single-video selection and ingestion for semantic search.
 - Async ingestion pipeline: audio extraction → Voxtral transcription → context-aware chunking → embedding with Mistral models → storage in PostgreSQL + pgvector.
 - Natural-language search that:
-  - Uses **hybrid macro retrieval** (**dense embeddings + BM25 lexical + RRF fusion**) to build top macro context, then sends structured macro→micro JSON context to a **Mistral LLM** that infers **quote vs scene** intent (**scene** = default when the query is vague and does not target specific wording) and returns a **single float timestamp** for seek.
-  - For **quote-like** queries, seeks to within ±5 seconds of the correct moment (LLM should classify **quote** intent and anchor precise wording when present in the shortlisted text).
+  - Uses **hybrid macro retrieval** (**dense embeddings + BM25 lexical + RRF fusion**) to build top macro context, then sends structured macro→micro JSON context to a **Mistral LLM** that infers **quote vs scene** intent (**scene** = default when the query is vague and does not target specific wording).
+  - For **quote-like** queries, returns a **verbatim quote anchor text** from shortlisted context, then resolves the final seek segment via lexical matching over micro candidates.
+  - For **scene-like** queries, returns a **sentence anchor** representing the start of the requested scene from context.
+  - Emits a normalized API result (`start_ts`, `end_ts`, snippet/context fields) regardless of internal extraction path.
   - For **vague scene** descriptions, jumps to a **coherent** anchor (often scene / block **start** or representative line) within 30 seconds of the similarity peak and aligned to sentence boundaries where possible.
 - Web UI (e.g., Next.js) that lets the user select a video, observe ingestion progress, enter queries, and watch the player seek/play to the selected timestamp.
 - FastAPI + Pydantic backend exposing ingestion, status, and search endpoints.
@@ -177,7 +179,7 @@ We selected a FastAPI + Next.js + PostgreSQL + Docker Compose starter as the bas
   - `POST /videos`: register and start ingestion for a video (uploaded file or referenced local path).
   - `GET /videos`: list videos and their ingestion status.
   - `GET /videos/{id}/status`: detailed ingestion job status and progress.
-  - `POST /videos/{id}/search`: accept a query string and return the best-matching segment for playback (`start_ts`, `end_ts`, fine-match `text`) plus **`macro_context_text`** (full coarse unit covering the result) and **character offsets** into that string for the fine span — so the client can render **macro block + highlighted micro** without guessing concatenation. **Server-side retrieval** implements: **(1)** dense macro retrieval on embeddings + BM25 lexical retrieval on macro text; **(2)** rank fusion via **RRF** (default `k=60`) and top-K context packaging (default 10 macros); **(3)** **Mistral chat** completion over structured macro→micro JSON context with instructions for **quote vs scene** behavior; **(4)** strict parsing/validation of a timestamp-only output (`start` float), then response assembly including **tiered** `match_quality` / similar (no misleading raw % as primary trust).
+  - `POST /videos/{id}/search`: accept a query string and return the best-matching segment for playback (`start_ts`, `end_ts`, fine-match `text`) plus **`macro_context_text`** (full coarse unit covering the result) and **character offsets** into that string for the fine span — so the client can render **macro block + highlighted micro** without guessing concatenation. **Server-side retrieval** implements: **(1)** dense macro retrieval on embeddings + BM25 lexical retrieval on macro text; **(2)** rank fusion via **RRF** (default `k=60`) and top-K context packaging (default 10 macros); **(3)** **Mistral chat** completion over structured macro→micro JSON context with instructions for **quote vs scene** behavior; **(4)** intent-aware extraction with a unified contract: both quote and scene paths return sentence anchors (quote match sentence vs scene-start sentence) that are resolved lexically to micro segments; **(5)** deterministic fallback and normalized response assembly including **tiered** `match_quality` / similar (no misleading raw % as primary trust).
 - Frontend polls `GET /videos/{id}/status` on an interval while ingestion is running; no WebSockets/SSE.
 
 ### Frontend Architecture
@@ -211,7 +213,7 @@ Tune without code changes (`backend/app/config.py` and `.env.example`):
 - **Macro target size:** `TRANSCRIPT_MACRO_TARGET_MODE` (`words` default, `chars` optional), `TRANSCRIPT_MACRO_TARGET_WORDS`, `TRANSCRIPT_MACRO_TARGET_CHARS`.
 - **Hybrid retrieval:** `SEARCH_MACRO_TOP_K` (context candidates sent to LLM), `SEARCH_RRF_K` (RRF constant; default 60), optional dense/BM25 weighting/tuning knobs as implemented.
 - **Lexical retrieval:** BM25 index/search settings for `macro_text_content` (documented with backend search service configuration).
-- **Mistral extractor:** `MISTRAL_ANCHOR_MODEL`, `MISTRAL_ANCHOR_MAX_TOKENS` (or equivalent extractor vars) for timestamp-only chat completion.
+- **Mistral extractor:** `MISTRAL_ANCHOR_MODEL`, `MISTRAL_ANCHOR_MAX_TOKENS` (or equivalent extractor vars) for intent-aware chat completion with a unified sentence-anchor contract (quote-matching sentence for quote-like queries, scene-start sentence for scene-like queries).
 
 ### Decision Impact Analysis
 

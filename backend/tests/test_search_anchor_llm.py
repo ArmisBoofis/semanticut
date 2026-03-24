@@ -74,11 +74,11 @@ def test_select_search_anchor_accepts_verbatim(monkeypatch: pytest.MonkeyPatch) 
     assert r.intent == "quote"
 
 
-def test_select_timestamp_from_structured_context_accepts_float(
+def test_select_sentence_anchor_from_structured_context_plain_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Msg:
-        content = '{"start":12.34,"status":"ok"}'
+        content = "Bonjour et bienvenue dans ce tutoriel."
 
     class Choice:
         message = Msg()
@@ -98,19 +98,19 @@ def test_select_timestamp_from_structured_context_accepts_float(
 
     monkeypatch.setattr(mistral_client, "_build_mistral", fake_build)
     monkeypatch.setattr(mistral_client.settings, "mistral_api_key", "test-key")
-    r = mistral_client.select_timestamp_from_structured_context(
+    r = mistral_client.select_sentence_anchor_from_structured_context(
         user_query="q",
         structured_context_json='{"macros":[]}',
     )
     assert r.status == "ok"
-    assert r.start == 12.34
+    assert r.anchor == "Bonjour et bienvenue dans ce tutoriel."
 
 
-def test_select_timestamp_from_structured_context_rejects_invalid(
+def test_select_sentence_anchor_from_structured_context_no_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Msg:
-        content = '{"start":"abc","status":"ok"}'
+        content = "no_match"
 
     class Choice:
         message = Msg()
@@ -130,9 +130,9 @@ def test_select_timestamp_from_structured_context_rejects_invalid(
 
     monkeypatch.setattr(mistral_client, "_build_mistral", fake_build)
     monkeypatch.setattr(mistral_client.settings, "mistral_api_key", "test-key")
-    r = mistral_client.select_timestamp_from_structured_context(
+    r = mistral_client.select_sentence_anchor_from_structured_context(
         user_query="q",
         structured_context_json='{"macros":[]}',
     )
     assert r.status == "no_match"
-    assert r.start is None
+    assert r.anchor is None
