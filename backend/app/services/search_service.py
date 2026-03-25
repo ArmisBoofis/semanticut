@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from uuid import UUID
 
 from sqlalchemy import Float, cast, func, select
@@ -165,7 +166,7 @@ async def _search_two_pass(
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     try:
-        anchor_res = mistral_client.select_sentence_anchor_intent_from_structured_context(
+        anchor_res = mistral_client.select_search_anchor_from_structured_context(
             user_query=user_query,
             structured_context_json=payload_json,
         )
@@ -177,9 +178,14 @@ async def _search_two_pass(
             502,
         ) from exc
 
+    # Do not fall back to retrieval when the model explicitly refuses: `_pick_micro_from_anchor`
+    # treats a missing anchor as « pick top macro’s first micro », which would ignore no_match.
+    if anchor_res.status == "no_match":
+        raise AppError("NO_MATCH", "aucun passage pertinent trouvé pour cette requête", 404)
+
     seg, owning_macro, micros_in_macro = _pick_micro_from_anchor(
         macro_context=macro_ctx,
-        anchor_text=anchor_res.anchor if anchor_res.status == "ok" else None,
+        anchor_text=anchor_res.anchor,
         quote_intent=_force_scene_intent_for_vague_query(user_query, anchor_res.intent)
         == "quote",
     )
@@ -342,7 +348,14 @@ def _anchor_overlap_score(anchor: str, micro_text: str) -> float:
 
 
 def _looks_like_quote_query(query: str) -> bool:
-    q = (query or "").strip().lower()
+    def strip_accents(s: str) -> str:
+        return "".join(
+            c
+            for c in unicodedata.normalize("NFKD", s)
+            if unicodedata.category(c) != "Mn"
+        )
+
+    q = strip_accents((query or "").strip().lower())
     if not q:
         return False
     quote_markers = ('"', "'", "«", "»", "“", "”")
@@ -350,21 +363,33 @@ def _looks_like_quote_query(query: str) -> bool:
         return True
     lexical_markers = (
         "mot pour mot",
+        "mot a mot",
+        "a la lettre",
+        "phrase exacte",
+        "texte exact",
+        "mot exact",
         "exact",
         "exacte",
         "exactement",
         "citation",
+        "citer",
+        "cite",
+        "recopie",
+        "recopier",
+        "reproduis",
+        "rappelle",
         "quote",
+        "verbatim",
         "verbatim",
     )
     return any(marker in q for marker in lexical_markers)
 
 
 def _force_scene_intent_for_vague_query(user_query: str, llm_intent: str) -> str:
-    """Default vague queries to scene intent, preserving quote-intent only when explicit."""
-    intent = (llm_intent or "scene").lower()
     if _looks_like_quote_query(user_query):
-        return "quote" if intent == "quote" else "scene"
+        # If the user explicitly asks for a quote/citation, we should privilege
+        # lexical anchoring even when the LLM mis-classifies the request.
+        return "quote"
     return "scene"
 
 
@@ -385,7 +410,11 @@ def _enforce_near_peak_segment(
     ]
     if not within:
         return peak
-    return min(within, key=lambda seg: abs(float(seg.start_ts) - float(peak.start_ts)))
+    # Preserve continuity: when the current selection is too far away from the peak
+    # region, constrain to the "near peak" window, then pick the candidate closest
+    # to the original selected segment (not the exact peak). This matches the
+    # adaptive-search behavior expected by unit tests.
+    return min(within, key=lambda seg: abs(float(seg.start_ts) - float(selected.start_ts)))
 
 
 def _pick_micro_from_anchor(

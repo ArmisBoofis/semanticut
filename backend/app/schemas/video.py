@@ -70,6 +70,8 @@ class VideoListItem(BaseModel):
         default=None,
         description="Progress 0–100 from `ingestion_jobs.progress_percent` when set.",
     )
+    error_code: str | None = None
+    error_message: str | None = None
     created_at: datetime
 
 

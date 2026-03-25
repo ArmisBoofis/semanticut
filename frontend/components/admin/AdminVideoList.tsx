@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { DeleteVideoConfirmDialog } from "@/components/admin/DeleteVideoConfirmDialog";
 import { RegisterVideoForm } from "@/components/admin/RegisterVideoForm";
 import {
-  frenchIngestionPhaseLabel,
-  frenchIngestionStatusLabel,
+  frenchIngestionFailedErrorSummary,
+  frenchIngestionPhaseLabelForStatus,
 } from "@/lib/ingestionStatus";
 import { fr } from "@/lib/strings";
 
@@ -19,6 +19,8 @@ export type VideoListItem = {
   ingestion_status: string;
   ingestion_phase: string | null;
   ingestion_progress_percent: number | null;
+  error_code: string | null;
+  error_message: string | null;
   created_at: string;
 };
 
@@ -187,13 +189,7 @@ export function AdminVideoList() {
                   {fr.adminColLabel}
                 </th>
                 <th scope="col" className="px-4 py-3 font-medium">
-                  {fr.adminColStatus}
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
                   {fr.adminColPhase}
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  {fr.adminColProgress}
                 </th>
                 <th scope="col" className="px-4 py-3 font-medium">
                   {fr.adminColActions}
@@ -201,53 +197,46 @@ export function AdminVideoList() {
               </tr>
             </thead>
             <tbody>
-              {items.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-zinc-800/80 last:border-0"
-                >
-                  <td className="px-4 py-3 font-medium text-zinc-100">
-                    {row.label}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-xs text-zinc-200">
-                      {frenchIngestionStatusLabel(row.ingestion_status)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-300">
-                    {frenchIngestionPhaseLabel(row.ingestion_phase)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.ingestion_progress_percent != null ? (
-                      <div className="flex max-w-xs items-center gap-2">
-                        <div className="h-2 flex-1 overflow-hidden rounded bg-zinc-800">
-                          <div
-                            className="h-full rounded bg-emerald-600/90"
-                            style={{
-                              width: `${Math.min(100, Math.max(0, row.ingestion_progress_percent))}%`,
-                            }}
-                          />
+              {items.map((row) => {
+                return (
+                  <tr
+                    key={row.id}
+                    className="border-b border-zinc-800/80 last:border-0"
+                  >
+                    <td className="px-4 py-3 font-medium text-zinc-100">
+                      {row.label}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-300">
+                      <div className="space-y-1">
+                        <div>
+                          {frenchIngestionPhaseLabelForStatus(
+                            row.ingestion_status,
+                            row.ingestion_phase,
+                          )}
                         </div>
-                        <span className="tabular-nums text-zinc-400">
-                          {row.ingestion_progress_percent}%
-                        </span>
+                        {row.ingestion_status === "failed" && (
+                          <div
+                            className="text-xs text-red-200"
+                            role="alert"
+                          >
+                            {frenchIngestionFailedErrorSummary(row.error_code)}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-zinc-500">{fr.adminNoProgress}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      className="rounded-md border border-red-900/80 bg-red-950/40 px-2.5 py-1 text-xs font-medium text-red-200 hover:bg-red-950/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
-                      onClick={() => setConfirmVideo(row)}
-                      aria-label={`${fr.adminDelete} : ${row.label}`}
-                    >
-                      {fr.adminDelete}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        className="rounded-md border border-red-900/80 bg-red-950/40 px-2.5 py-1 text-xs font-medium text-red-200 hover:bg-red-950/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+                        onClick={() => setConfirmVideo(row)}
+                        aria-label={`${fr.adminDelete} : ${row.label}`}
+                      >
+                        {fr.adminDelete}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -30,6 +30,8 @@ async def test_post_and_get_videos_happy_path(video_client):
     assert items[0]["ingestion_status"] == "pending"
     assert items[0]["ingestion_phase"] is None
     assert items[0]["ingestion_progress_percent"] is None
+    assert items[0]["error_code"] is None
+    assert items[0]["error_message"] is None
 
 
 async def test_get_videos_includes_phase_and_progress_when_set(video_client, video_engine):
@@ -60,6 +62,50 @@ async def test_get_videos_includes_phase_and_progress_when_set(video_client, vid
     assert len(items) == 1
     assert items[0]["ingestion_phase"] == "transcoding"
     assert items[0]["ingestion_progress_percent"] == 42
+    assert items[0]["error_code"] is None
+    assert items[0]["error_message"] is None
+
+
+async def test_get_videos_includes_failed_error_details(
+    video_client,
+    video_engine,
+):
+    create = await video_client.post(
+        "/videos",
+        json={"label": "Interview C", "storage_path": "/data/videos/demo.mp4"},
+    )
+    assert create.status_code == 201
+    body = create.json()
+    video_id = UUID(body["id"])
+
+    async_session = async_sessionmaker(
+        video_engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+    async with async_session() as session:
+        await session.execute(
+            update(IngestionJob)
+            .where(IngestionJob.video_id == video_id)
+            .values(
+                status="failed",
+                phase="transcribing",
+                progress_percent=55,
+                error_code="TRANSCRIPTION_FAILED",
+                error_message="transcription layer crashed",
+            ),
+        )
+        await session.commit()
+
+    listed = await video_client.get("/videos")
+    assert listed.status_code == 200
+    items = listed.json()
+    assert len(items) == 1
+    assert items[0]["ingestion_status"] == "failed"
+    assert items[0]["ingestion_phase"] == "transcribing"
+    assert items[0]["ingestion_progress_percent"] == 55
+    assert items[0]["error_code"] == "TRANSCRIPTION_FAILED"
+    assert items[0]["error_message"] == "transcription layer crashed"
 
 
 async def test_post_videos_validation_error_shape(video_client):

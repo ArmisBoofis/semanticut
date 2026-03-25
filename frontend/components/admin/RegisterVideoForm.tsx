@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { fr } from "@/lib/strings";
 

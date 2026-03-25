@@ -8,7 +8,7 @@ export const fr = {
   backendOk: "API : opérationnelle (base de données OK)",
   backendUnavailable:
     "API : indisponible ou erreur. Vérifiez que les services Docker sont démarrés.",
-  homeLinkAdmin: "Administration",
+  homeLinkAdmin: "Ingestion",
   homeReadyVideosHeading: "Vidéos prêtes pour la recherche",
   homeReadyVideosHelper:
     "Seules les vidéos dont l’ingestion est terminée sont disponibles ici.",
@@ -23,7 +23,7 @@ export const fr = {
   homeSearchSubmit: "Rechercher",
   homeSearchSubmitting: "Recherche en cours…",
   homeSearchNoVideoSelected:
-    "Sélectionnez une vidéo prête dans la liste ci-dessus pour lancer une recherche.",
+    "Ouvrez une vidéo via le menu déroulant pour afficher le lecteur et lancer une recherche.",
   homeSearchSnippetTitle: "Extrait trouvé",
   /** Full coarse context around the fine match (two-pass retrieval). */
   homeSearchMacroContextTitle: "Contexte oral",
@@ -33,6 +33,9 @@ export const fr = {
   /** Screen reader hint for the highlighted fine span inside macro text. */
   homeSearchPassageHighlightAria: "Passage retenu pour la lecture",
   homeSearchPlaybackFromPrefix: "Lecture à partir de ",
+  homeSearchSeeking: "Lecture en cours…",
+  homeSearchSeekTimeoutError:
+    "Lecture impossible automatiquement. Réessayez la recherche.",
   homeSearchNoMatch:
     "Aucun passage pertinent trouvé. Reformulez ou essayez une autre vidéo.",
   homeSearchMalformedResponse: "Réponse serveur inattendue.",
@@ -43,9 +46,10 @@ export const fr = {
   homeSearchRetry: "Réessayer",
   homeSearchUnplayableResult:
     "Ce résultat ne peut pas être lu automatiquement. Relancez la recherche ou reformulez votre requête.",
-  adminTitle: "Vidéos enregistrées",
-  adminSubtitle: "État d’ingestion et progression",
-  adminBackHome: "Accueil",
+  adminTitle: "Ingestion",
+  adminSubtitle:
+    "Suivez l’état et la phase d’ingestion des vidéos, puis gérez la liste des sources.",
+  adminBackHome: "Visionnage",
   adminLoading: "Chargement de la liste…",
   adminLoadError:
     "Impossible de charger les vidéos. Vérifiez l’API et réessayez.",

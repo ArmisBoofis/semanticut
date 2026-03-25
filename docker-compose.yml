@@ -73,10 +73,6 @@ services:
       - "${WEB_PORT:-3000}:3000"
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
-    volumes:
-      - ./frontend:/app
-      - web_node_modules:/app/node_modules
-      - web_next:/app/.next
     depends_on:
       api:
         condition: service_started
@@ -84,7 +80,3 @@ services:
 volumes:
   postgres_data:
     name: semanticut_postgres_data
-  web_node_modules:
-    name: semanticut_web_node_modules
-  web_next:
-    name: semanticut_web_next

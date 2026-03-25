@@ -72,7 +72,7 @@ This builds/starts services defined in `docker-compose.yml`. The stack includes:
 
 - **`db`**: PostgreSQL using the **`pgvector/pgvector`** image (pg16) with a named volume for data and init scripts under `docker/postgres/init/`.
 - **`api`**: FastAPI, exposed on **`API_PORT`** (default **8000**).
-- **`web`**: Next.js (App Router) dev server with **hot reload** — source is bind-mounted; **`node_modules`** and **`.next`** use named volumes. First start runs **`npm ci`** in the entrypoint if dependencies are missing in the volume.
+- **`web`**: Next.js (App Router) **production** image (`next build` + standalone `node server.js`). Rebuild the image after frontend code changes. For **local dev with hot reload**, run **`npm run dev`** in **`frontend/`** (see below) instead of relying on this service.
 
 ### Verify services
 

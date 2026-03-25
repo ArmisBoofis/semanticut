@@ -167,6 +167,11 @@ def test_force_scene_intent_for_verbatim_query_keeps_quote() -> None:
     assert _force_scene_intent_for_vague_query(query, "quote") == "quote"
 
 
+def test_force_scene_intent_for_citation_keeps_quote_when_llm_says_scene() -> None:
+    query = "je veux une citation exacte de ce passage"
+    assert _force_scene_intent_for_vague_query(query, "scene") == "quote"
+
+
 def test_enforce_near_peak_segment_falls_back_when_too_far() -> None:
     peak = SimpleNamespace(id=uuid4(), start_ts=100.0)
     near = SimpleNamespace(id=uuid4(), start_ts=125.0)

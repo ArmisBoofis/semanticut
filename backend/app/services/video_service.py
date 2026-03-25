@@ -223,3 +223,19 @@ def ingestion_progress_percent_for_video(video: Video) -> int | None:
     return job.progress_percent
 
 
+def ingestion_error_code_for_video(video: Video) -> str | None:
+    """Return job error code, or None if no job row."""
+    job = video.ingestion_job
+    if job is None:
+        return None
+    return job.error_code
+
+
+def ingestion_error_message_for_video(video: Video) -> str | None:
+    """Return job error message, or None if no job row."""
+    job = video.ingestion_job
+    if job is None:
+        return None
+    return job.error_message
+
+

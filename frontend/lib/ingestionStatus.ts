@@ -28,3 +28,45 @@ export function frenchIngestionPhaseLabel(phase: string | null): string {
   }
   return PHASE_LABELS[phase] ?? phase;
 }
+
+/**
+ * Phase label for the admin list, with "truthful determinism" for states where
+ * `ingestion_phase` can be null (e.g. pending/completed).
+ */
+export function frenchIngestionPhaseLabelForStatus(
+  ingestion_status: string,
+  phase: string | null,
+): string {
+  if (ingestion_status === "pending") {
+    return PHASE_LABELS.extracting_audio;
+  }
+  if (ingestion_status === "completed") {
+    // Backend sets `phase=None` on completion; keep the UI unambiguous.
+    return "Terminé";
+  }
+  if (ingestion_status === "failed") {
+    const phaseLabel = frenchIngestionPhaseLabel(phase);
+    if (phaseLabel === "—") return STATUS_LABELS.failed;
+    return `${STATUS_LABELS.failed} — ${phaseLabel}`;
+  }
+  return frenchIngestionPhaseLabel(phase);
+}
+
+const ERROR_CODE_SUMMARIES: Record<string, string> = {
+  TRANSCRIPTION_FAILED:
+    "Transcription impossible. Vérifiez le fichier et réessayez.",
+  FILE_NOT_FOUND: "Fichier vidéo introuvable. Vérifiez le chemin du fichier.",
+};
+
+const ERROR_CODE_FALLBACK = "Échec de l’ingestion. Consultez les logs serveur.";
+
+/**
+ * Demo-operator-friendly French error summary.
+ * Never rely on `error_message` (may be non-French/too technical); use `error_code` only.
+ */
+export function frenchIngestionFailedErrorSummary(
+  error_code: string | null | undefined,
+): string {
+  if (!error_code) return ERROR_CODE_FALLBACK;
+  return ERROR_CODE_SUMMARIES[error_code] ?? ERROR_CODE_FALLBACK;
+}

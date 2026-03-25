@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-03-21T10:48:03Z"
-last_updated: "2026-03-24T13:45:30Z"
+last_updated: "2026-03-25T13:28:24Z"
 project: semanticut
 project_key: NOKEY
 tracking_system: file-system
@@ -67,7 +67,7 @@ development_status:
   epic-4: in-progress
   4-1-primary-page-search-interaction-shows-loading-and-handles-timeout-errors: done
   4-2-search-results-update-the-ui-and-seek-the-player-to-start-ts: done
-  4-3-smooth-seeking-ux-when-users-run-repeated-searches: backlog
-  4-4-admin-page-ingestion-ui-shows-phases-progress-clearly-for-all-states: backlog
-  4-5-graceful-system-level-failure-handling-backend-unreachable-no-data: backlog
+  4-3-smooth-seeking-ux-when-users-run-repeated-searches: done
+  4-4-admin-page-ingestion-ui-shows-phases-progress-clearly-for-all-states: done
+  4-5-graceful-system-level-failure-handling-backend-unreachable-no-data: in-progress
   epic-4-retrospective: optional

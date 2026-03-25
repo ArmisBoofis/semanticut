@@ -21,6 +21,8 @@ from app.services.video_service import (
     create_video_with_job,
     delete_video,
     get_video_by_id,
+    ingestion_error_code_for_video,
+    ingestion_error_message_for_video,
     ingestion_phase_for_video,
     ingestion_progress_percent_for_video,
     ingestion_status_for_video,
@@ -150,6 +152,8 @@ async def get_videos(
             ingestion_status=ingestion_status_for_video(v),
             ingestion_phase=ingestion_phase_for_video(v),
             ingestion_progress_percent=ingestion_progress_percent_for_video(v),
+            error_code=ingestion_error_code_for_video(v),
+            error_message=ingestion_error_message_for_video(v),
             created_at=v.created_at,
         )
         for v in rows

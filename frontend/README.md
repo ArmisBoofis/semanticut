@@ -3,7 +3,7 @@
 Next.js (App Router) + TypeScript + TailwindCSS. Product UI copy is **French** (`fr-FR`).
 
 - **Local dev (host):** `npm ci && export API_INTERNAL_URL=http://127.0.0.1:8000 && npm run dev`
-- **Docker:** see repository root `README.md` — `web` service uses `API_INTERNAL_URL=http://api:8000` for server-side fetches to FastAPI.
+- **Docker (demo / prod-like):** the root `docker-compose.yml` **`web`** image runs **`next build`** and **`node server.js`** (standalone). Rebuild after UI changes: `docker compose build web && docker compose up -d web`.
 
 The home page calls **`GET /health`** on the API from the **Next.js server** (no browser CORS).
 
