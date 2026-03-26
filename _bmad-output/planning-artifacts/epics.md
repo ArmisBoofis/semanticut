@@ -7,7 +7,6 @@ stepsCompleted:
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/architecture.md
-  - _bmad-output/planning-artifacts/ux-design-specification.md
 ---
 
 # semanticut - Epic Breakdown
@@ -29,6 +28,7 @@ FR4: For vague, scene-style queries, the system returns a start timestamp that:
 FR5: The app is runnable via a one-command Docker Compose setup, wiring FastAPI + Pydantic backend, PostgreSQL + SQLAlchemy + Alembic (with pgvector), and the web UI, with a stable DB schema.
 FR6: The primary page only lists fully ingested videos that are available for search; partially ingested videos never appear there.
 FR7: An admin page lists all videos (including those currently ingesting) with their ingestion status and allows the admin to remove videos.
+FR8: If video duration is strictly greater than 30 minutes, ingestion splits the source into 30-minute fragments (last fragment shorter if needed), transcribes each fragment separately, then merges outputs into a single transcript timeline for the original video.
 
 ### NonFunctional Requirements
 
@@ -41,6 +41,7 @@ NFR4: For vague queries, returned timestamps:
 NFR5: Stack constraints: PostgreSQL + SQLAlchemy + Alembic; FastAPI + Pydantic; only Mistral models for transcription/embeddings/gen-AI; Dockerfile + Docker Compose; async for ingestion, indexing, and vector search workloads.
 NFR6: Time-to-first-success: reviewer can go from repo checkout to “app running + short video ingested + first successful search/jump” in ≤ 10 minutes.
 NFR7: Reliability and reproducibility sufficient for a Mistral reviewer running locally.
+NFR8: After fragment transcription merge, timestamp continuity is preserved globally by applying cumulative fragment offsets before persistence, preventing resets/overlaps and matching original video time.
 
 ### Additional Requirements
 
@@ -64,6 +65,8 @@ NFR7: Reliability and reproducibility sufficient for a Mistral reviewer running 
   - An admin page listing all videos (including ingesting ones), their ingestion status, and controls to remove videos.
 - Local-only, single-user deployment; no auth for MVP; services exposed via Docker Compose on localhost.
 - Logging for API requests, ingestion phases, and search queries; no full monitoring stack.
+- Fragmentation safety policy: trigger chunked transcription only when video duration is strictly greater than 30 minutes; generate sequential 30-minute fragments with a potentially shorter final fragment.
+- Transcript reconstruction rule: persist merged transcript segments in original order with deterministic cumulative timestamp shifts per fragment.
 - Naming and formatting rules:
   - DB tables: lowercase plural with underscores; columns in snake_case.
   - REST endpoints: plural nouns; path params and JSON fields in snake_case.
@@ -89,6 +92,7 @@ FR4: Epic 3 - Searchable Video Experience (Primary Page)
 FR5: Epic 1 - Reviewer-Ready Environment & Stack Setup  
 FR6: Epic 3 - Searchable Video Experience (Primary Page)  
 FR7: Epic 2 - Video Registration & Ingestion Management (Admin)  
+FR8: Epic 2 - Video Registration & Ingestion Management (Admin)  
 
 _Note: FR6 and FR7 are not separate PRD numbered requirements; they decompose PRD MVP “video selection” and async ingestion into explicit primary-page and admin behaviors._
 
@@ -161,12 +165,12 @@ So that I can verify the full stack wiring from a browser even before real featu
 **Then** I see a single-copy-paste command (or very small set of commands) that takes me from clone → running stack → URL to visit, with notes about expected ports.
 
 ### Epic 2: Video Registration & Ingestion Management (Admin)
-Enable an admin to register and remove videos (including **registering videos from the admin UI** via an upload form, in addition to API registration), trigger ingestion, and monitor ingestion status and progress for all videos from an admin page.
-**FRs covered:** FR2, FR7
+Enable an admin to register and remove videos (including **registering videos from the admin UI** via an upload form, in addition to API registration), trigger ingestion, and monitor ingestion status and progress for all videos from an admin page, including long-video fragmentation and timestamp-safe transcript reconstruction.
+**FRs covered:** FR2, FR7, FR8
 
 ## Epic 2: Video Registration & Ingestion Management (Admin)
 
-Enable an admin to register and remove videos (including **registering videos from the admin UI** via an upload form, in addition to API registration), trigger ingestion, and monitor ingestion status and progress for all videos from an admin page.
+Enable an admin to register and remove videos (including **registering videos from the admin UI** via an upload form, in addition to API registration), trigger ingestion, and monitor ingestion status and progress for all videos from an admin page, including long-video fragmentation and timestamp-safe transcript reconstruction.
 
 ### Story 2.1: Admin can register videos for ingestion
 
@@ -241,11 +245,13 @@ So that videos become searchable without blocking the UI and with clear status r
 
 **Given** a video has been registered via `POST /videos`  
 **When** the ingestion job starts  
-**Then** it runs asynchronously (for example, in a background task or worker) and transitions through well-defined states such as `pending`, `running`, `completed`, and `failed`.
+**Then** it runs asynchronously (for example, in a background task or worker) and transitions through well-defined states such as `pending`, `running`, `completed`, and `failed`  
+**And** the pipeline branches by duration: videos with duration `<= 30:00` use single-pass transcription, while videos with duration `> 30:00` use fragment mode.
 
 **Given** an ingestion job is running  
 **When** I poll its status via an endpoint such as `GET /videos/{video_id}/status` or `GET /videos`  
-**Then** I can see at least the current phase (for example, `transcribing`, `chunking`, `embedding`, `indexing`) and an overall progress indicator (such as percentage or phase-based step count).
+**Then** I can see at least the current phase (for example, `transcribing`, `chunking`, `embedding`, `indexing`) and an overall progress indicator (such as percentage or phase-based step count)  
+**And** for fragment mode, status exposes fragment progress (`current_fragment/total_fragments` or equivalent).
 
 **Given** ingestion completes successfully for a video  
 **When** I fetch its status via `GET /videos/{video_id}/status` (or `GET /videos`)  
@@ -255,6 +261,39 @@ So that videos become searchable without blocking the UI and with clear status r
 **Given** ingestion fails at any step  
 **When** I view the video in the admin list or status endpoint  
 **Then** the ingestion status is `failed`, with a reason or error message logged server-side and a concise error state visible to the admin (for example, “Ingestion failed – see logs”).
+
+### Story 2.6: Large-video fragmentation and merged timeline reconstruction
+
+As an admin,
+I want long videos to be automatically fragmented and reassembled into one transcript timeline,
+So that ingestion succeeds past model size limits without breaking timestamp accuracy.
+
+**Acceptance Criteria:**
+
+**Given** a video duration is strictly greater than 30 minutes  
+**When** ingestion starts  
+**Then** the system creates sequential fragments of maximum 30 minutes each  
+**And** the last fragment is shorter when remainder duration exists.
+
+**Given** a video duration is exactly 30 minutes  
+**When** ingestion starts  
+**Then** fragmentation is not triggered  
+**And** single-pass transcription is used.
+
+**Given** fragment transcripts return timestamps local to each fragment  
+**When** merge/reconstruction runs  
+**Then** each segment receives a cumulative offset equal to the sum of prior fragment durations  
+**And** persisted segment timestamps are monotonic and aligned to original full-video time.
+
+**Given** one fragment fails transcription  
+**When** ingestion status is requested  
+**Then** the job is marked failed (or retryable if retry policy exists) with clear diagnostics  
+**And** the video is not marked completed with a partially merged timeline.
+
+**Given** a chunked ingestion (>30 minutes) completes successfully  
+**When** search is executed on that video  
+**Then** returned `start_ts` and `end_ts` values reference the original video clock  
+**And** no timestamp reset occurs at fragment boundaries.
 
 ### Story 2.5: Admin can register videos via upload form on the admin page
 

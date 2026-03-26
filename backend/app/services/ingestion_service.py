@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import subprocess
@@ -28,6 +29,13 @@ from app.services.macro_grouping import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class FragmentPlanItem:
+    index: int
+    start_offset_sec: float
+    duration_sec: float
 
 
 def resolve_video_file_path(storage_path: str) -> Path:
@@ -90,6 +98,92 @@ async def extract_audio_wav(video_path: Path, out_path: Path) -> None:
     proc = await asyncio.to_thread(_run)
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr or "ffmpeg audio extraction failed")
+
+
+async def extract_audio_fragment_wav(
+    video_path: Path,
+    *,
+    start_offset_sec: float,
+    duration_sec: float,
+    out_path: Path,
+) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{start_offset_sec:.6f}",
+        "-t",
+        f"{duration_sec:.6f}",
+        "-i",
+        str(video_path),
+        "-vn",
+        "-acodec",
+        "pcm_s16le",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        str(out_path),
+    ]
+
+    def _run() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+    proc = await asyncio.to_thread(_run)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr or "ffmpeg fragment extraction failed")
+
+
+def build_fragment_plan(
+    *,
+    duration_seconds: float,
+    max_fragment_seconds: int,
+) -> list[FragmentPlanItem]:
+    safe_duration = max(0.0, float(duration_seconds))
+    max_sec = max(1, int(max_fragment_seconds))
+    if safe_duration <= 0:
+        return []
+
+    out: list[FragmentPlanItem] = []
+    current_start = 0.0
+    idx = 0
+    while current_start < safe_duration:
+        remaining = safe_duration - current_start
+        frag_dur = min(float(max_sec), remaining)
+        out.append(
+            FragmentPlanItem(
+                index=idx,
+                start_offset_sec=current_start,
+                duration_sec=frag_dur,
+            )
+        )
+        current_start += frag_dur
+        idx += 1
+    return out
+
+
+def merge_fragment_chunks_with_global_timestamps(
+    *,
+    fragment_plan: list[FragmentPlanItem],
+    fragment_chunks: list[list[tuple[float, float, str]]],
+) -> list[tuple[float, float, str]]:
+    if len(fragment_plan) != len(fragment_chunks):
+        raise ValueError("fragment plan and chunks length mismatch")
+    merged: list[tuple[float, float, str]] = []
+    prev_start = -1.0
+    for frag, local_chunks in zip(fragment_plan, fragment_chunks, strict=True):
+        offset = frag.start_offset_sec
+        for local_start, local_end, text in local_chunks:
+            global_start = local_start + offset
+            global_end = max(local_end + offset, global_start)
+            if global_start < prev_start:
+                raise ValueError("non-monotonic reconstructed timestamps")
+            merged.append((global_start, global_end, text))
+            prev_start = global_start
+    return merged
 
 
 def _split_text_into_time_chunks(
@@ -264,63 +358,215 @@ async def run_ingestion_for_job(job_id: UUID, video_id: UUID) -> None:
             )
         return
 
+    fragment_threshold = settings.ingestion_fragment_max_seconds
+    fragment_mode = media_duration > fragment_threshold
+    fragment_plan = (
+        build_fragment_plan(
+            duration_seconds=media_duration,
+            max_fragment_seconds=fragment_threshold,
+        )
+        if fragment_mode
+        else []
+    )
+    if fragment_mode:
+        logger.info(
+            "fragment_plan_built video_id=%s fragment_count=%s duration_seconds=%.3f max_fragment_seconds=%s",
+            video_id,
+            len(fragment_plan),
+            media_duration,
+            fragment_threshold,
+        )
+
     with tempfile.TemporaryDirectory(prefix="semanticut-ingest-") as tmp:
         tmp_path = Path(tmp)
         audio_path = tmp_path / "audio.wav"
-        try:
-            await extract_audio_wav(video_file, audio_path)
-        except Exception as exc:
-            logger.exception("ffmpeg extraction failed: %s", exc)
+        if fragment_mode:
             async with async_session_maker() as session:
-                await _fail_job(
+                if not await video_exists(session, video_id):
+                    logger.info("video deleted before fragment transcription: %s", video_id)
+                    return
+                await _apply_job_update(
                     session,
                     job_id,
-                    code="AUDIO_EXTRACTION_FAILED",
-                    message="Audio extraction failed (ffmpeg).",
-                    phase=phases.PHASE_EXTRACTING_AUDIO,
+                    phase=phases.PHASE_TRANSCRIBING,
+                    progress_percent=phases.progress_at_phase_start(phases.PHASE_TRANSCRIBING),
                 )
-            return
+                await session.commit()
 
-        async with async_session_maker() as session:
-            if not await video_exists(session, video_id):
-                logger.info("video deleted during extraction: %s", video_id)
+            all_fragment_chunks: list[list[tuple[float, float, str]]] = []
+            transcribing_start = phases.progress_at_phase_start(phases.PHASE_TRANSCRIBING)
+            transcribing_end = phases.progress_at_phase_start(phases.PHASE_CHUNKING)
+            transcribing_span = max(1, transcribing_end - transcribing_start)
+            total_fragments = len(fragment_plan)
+
+            for frag_idx, fragment in enumerate(fragment_plan):
+                if is_cancel_requested(video_id):
+                    async with async_session_maker() as session:
+                        await _fail_job(
+                            session,
+                            job_id,
+                            code="CANCELLED",
+                            message="Ingestion was cancelled.",
+                            phase=phases.PHASE_TRANSCRIBING,
+                        )
+                    return
+
+                fragment_audio = tmp_path / f"audio-fragment-{fragment.index:04d}.wav"
+                try:
+                    await extract_audio_fragment_wav(
+                        video_path=video_file,
+                        start_offset_sec=fragment.start_offset_sec,
+                        duration_sec=fragment.duration_sec,
+                        out_path=fragment_audio,
+                    )
+                except Exception as exc:
+                    logger.exception("ffmpeg fragment extraction failed: %s", exc)
+                    async with async_session_maker() as session:
+                        await _fail_job(
+                            session,
+                            job_id,
+                            code="AUDIO_EXTRACTION_FAILED",
+                            message="Audio extraction failed (ffmpeg).",
+                            phase=phases.PHASE_EXTRACTING_AUDIO,
+                        )
+                    return
+
+                try:
+                    transcript = await asyncio.to_thread(
+                        mistral_client.transcribe_audio_file,
+                        fragment_audio,
+                    )
+                except Exception as exc:
+                    mistral_client.log_mistral_error(exc, context="transcription")
+                    async with async_session_maker() as session:
+                        await _fail_job(
+                            session,
+                            job_id,
+                            code="TRANSCRIPTION_FAILED",
+                            message="Transcription failed. Check server logs.",
+                            phase=phases.PHASE_TRANSCRIBING,
+                        )
+                    return
+
+                fragment_chunks = _chunks_from_transcription(transcript, fragment.duration_sec)
+                if not fragment_chunks:
+                    async with async_session_maker() as session:
+                        await _fail_job(
+                            session,
+                            job_id,
+                            code="EMPTY_TRANSCRIPT",
+                            message="Transcription returned no usable text.",
+                            phase=phases.PHASE_TRANSCRIBING,
+                        )
+                    return
+                all_fragment_chunks.append(fragment_chunks)
+
+                progress = transcribing_start + int(
+                    ((frag_idx + 1) / total_fragments) * transcribing_span
+                )
+                progress = min(progress, transcribing_end)
+                async with async_session_maker() as session:
+                    if not await video_exists(session, video_id):
+                        logger.info("video deleted during fragment transcription: %s", video_id)
+                        return
+                    await _apply_job_update(
+                        session,
+                        job_id,
+                        phase=phases.PHASE_TRANSCRIBING,
+                        progress_percent=progress,
+                    )
+                    await session.commit()
+
+            try:
+                chunks = merge_fragment_chunks_with_global_timestamps(
+                    fragment_plan=fragment_plan,
+                    fragment_chunks=all_fragment_chunks,
+                )
+            except ValueError as exc:
+                async with async_session_maker() as session:
+                    await _fail_job(
+                        session,
+                        job_id,
+                        code="CHUNK_RECONSTRUCTION_FAILED",
+                        message=str(exc),
+                        phase=phases.PHASE_CHUNKING,
+                    )
                 return
-            await _apply_job_update(
-                session,
-                job_id,
-                phase=phases.PHASE_TRANSCRIBING,
-                progress_percent=phases.progress_at_phase_start(phases.PHASE_TRANSCRIBING),
+            logger.info(
+                "fragment_reconstruction_summary video_id=%s fragment_count=%s merged_segment_count=%s min_start_ts=%.3f max_end_ts=%.3f",
+                video_id,
+                len(fragment_plan),
+                len(chunks),
+                chunks[0][0],
+                chunks[-1][1],
             )
-            await session.commit()
+        else:
+            try:
+                await extract_audio_wav(video_file, audio_path)
+            except Exception as exc:
+                logger.exception("ffmpeg extraction failed: %s", exc)
+                async with async_session_maker() as session:
+                    await _fail_job(
+                        session,
+                        job_id,
+                        code="AUDIO_EXTRACTION_FAILED",
+                        message="Audio extraction failed (ffmpeg).",
+                        phase=phases.PHASE_EXTRACTING_AUDIO,
+                    )
+                return
 
-        if is_cancel_requested(video_id):
             async with async_session_maker() as session:
-                await _fail_job(
+                if not await video_exists(session, video_id):
+                    logger.info("video deleted during extraction: %s", video_id)
+                    return
+                await _apply_job_update(
                     session,
                     job_id,
-                    code="CANCELLED",
-                    message="Ingestion was cancelled.",
                     phase=phases.PHASE_TRANSCRIBING,
+                    progress_percent=phases.progress_at_phase_start(phases.PHASE_TRANSCRIBING),
                 )
-            return
+                await session.commit()
 
-        try:
-            transcript = await asyncio.to_thread(mistral_client.transcribe_audio_file, audio_path)
-        except Exception as exc:
-            mistral_client.log_mistral_error(exc, context="transcription")
-            async with async_session_maker() as session:
-                await _fail_job(
-                    session,
-                    job_id,
-                    code="TRANSCRIPTION_FAILED",
-                    message="Transcription failed. Check server logs.",
-                    phase=phases.PHASE_TRANSCRIBING,
-                )
-            return
+            if is_cancel_requested(video_id):
+                async with async_session_maker() as session:
+                    await _fail_job(
+                        session,
+                        job_id,
+                        code="CANCELLED",
+                        message="Ingestion was cancelled.",
+                        phase=phases.PHASE_TRANSCRIBING,
+                    )
+                return
+
+            try:
+                transcript = await asyncio.to_thread(mistral_client.transcribe_audio_file, audio_path)
+            except Exception as exc:
+                mistral_client.log_mistral_error(exc, context="transcription")
+                async with async_session_maker() as session:
+                    await _fail_job(
+                        session,
+                        job_id,
+                        code="TRANSCRIPTION_FAILED",
+                        message="Transcription failed. Check server logs.",
+                        phase=phases.PHASE_TRANSCRIBING,
+                    )
+                return
+
+            chunks = _chunks_from_transcription(transcript, media_duration)
+            if not chunks:
+                async with async_session_maker() as session:
+                    await _fail_job(
+                        session,
+                        job_id,
+                        code="EMPTY_TRANSCRIPT",
+                        message="Transcription returned no usable text.",
+                        phase=phases.PHASE_CHUNKING,
+                    )
+                return
 
         async with async_session_maker() as session:
             if not await video_exists(session, video_id):
-                logger.info("video deleted during transcription: %s", video_id)
+                logger.info("video deleted during chunking: %s", video_id)
                 return
             await _apply_job_update(
                 session,
@@ -329,18 +575,6 @@ async def run_ingestion_for_job(job_id: UUID, video_id: UUID) -> None:
                 progress_percent=phases.progress_at_phase_start(phases.PHASE_CHUNKING),
             )
             await session.commit()
-
-        chunks = _chunks_from_transcription(transcript, media_duration)
-        if not chunks:
-            async with async_session_maker() as session:
-                await _fail_job(
-                    session,
-                    job_id,
-                    code="EMPTY_TRANSCRIPT",
-                    message="Transcription returned no usable text.",
-                    phase=phases.PHASE_CHUNKING,
-                )
-            return
 
         async with async_session_maker() as session:
             if not await video_exists(session, video_id):

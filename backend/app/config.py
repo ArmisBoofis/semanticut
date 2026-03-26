@@ -46,6 +46,12 @@ class Settings(BaseSettings):
         default=500 * 1024 * 1024,
         validation_alias="VIDEO_UPLOAD_MAX_BYTES",
     )
+    ingestion_fragment_max_seconds: int = Field(
+        default=1800,
+        ge=60,
+        le=7200,
+        validation_alias="INGESTION_FRAGMENT_MAX_SECONDS",
+    )
     mistral_transcription_model: str = Field(
         default="voxtral-mini-latest",
         validation_alias="MISTRAL_TRANSCRIPTION_MODEL",
