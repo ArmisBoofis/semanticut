@@ -1,96 +1,76 @@
 # semanticut
 
-Monorepo for semantic video search: `backend/` (FastAPI), `frontend/` (Next.js), PostgreSQL with **pgvector** via Docker Compose.
+Semantic video search monorepo: `backend/` (FastAPI), `frontend/` (Next.js), PostgreSQL + **pgvector**, orchestrated with Docker Compose.
 
-## Prerequisites
+## Phase 1 — Onboarding (run the app)
 
-- **Docker** and **Docker Compose v2** (`docker compose`, not legacy `docker-compose`)
-- Optional: **`Node.js 22+`** and **npm** if you run the frontend outside Docker
-- Optional: **`psql`** on the host for manual checks against the published port
+### Prerequisites
 
-## Quick start (reviewer path)
+- **Docker** + **Docker Compose v2** (use `docker compose`, not `docker-compose`)
+- Optional (host dev): **Node.js 22+** / npm, and `psql`
 
-From a fresh clone:
+### 1) Create your `.env`
+
+From the repo root:
 
 ```bash
 cp .env.example .env
-docker compose up --build
 ```
 
-Then open:
+Then edit `.env` as needed. At minimum, the defaults work for local DB + API + web.
 
-- **Web UI:** [http://localhost:3000](http://localhost:3000) (or `http://localhost:${WEB_PORT}`) — home page shows backend health via server-side fetch to the API.
-- **API health:** [http://localhost:8000/health](http://localhost:8000/health) (or `http://localhost:${API_PORT}/health`)
+If you want ingestion (transcription + embeddings) to complete, you must set:
 
-Ports default to **3000** (`WEB_PORT`), **8000** (`API_PORT`), and **5432** (`POSTGRES_PORT`) unless overridden in `.env`.
+- `MISTRAL_API_KEY=...`
 
-## Environment
+Video storage is backed by a host folder mounted into containers:
 
-1. Copy the template and adjust if needed:
+- host path: `VIDEO_STORAGE_HOST_PATH` (default `./data/videos`)
+- container path: `VIDEO_STORAGE_ROOT` (default `/data/videos`)
 
-   ```bash
-   cp .env.example .env
-   ```
+### 2) Start the containers
 
-2. Variables (snake_case, shared with **`api`** / Alembic where applicable):
-
-   | Variable | Purpose |
-   |----------|---------|
-   | `POSTGRES_USER` | Database user |
-   | `POSTGRES_PASSWORD` | Database password (keep secret in real `.env`) |
-   | `POSTGRES_DB` | Database name |
-   | `POSTGRES_PORT` | Host port mapped to PostgreSQL (default `5432`) |
-   | `API_PORT` | Host port for the FastAPI **`api`** service (default `8000`) |
-   | `WEB_PORT` | Host port for the Next.js **`web`** service (default `3000`) |
-   | `API_INTERNAL_URL` | Base URL the **Next.js server** uses to call the API (inside Compose: `http://api:8000`; on host dev: `http://127.0.0.1:8000`) |
-   | `POSTGRES_HOST` | DB hostname for the API (Compose sets **`db`**; local dev often **`localhost`**) |
-   | `DB_CONNECT_TIMEOUT` / `DB_COMMAND_TIMEOUT` | Optional asyncpg timeouts (seconds) for connect / commands |
-
-The **`api`** service receives the same **`POSTGRES_USER`**, **`POSTGRES_PASSWORD`**, and **`POSTGRES_DB`** as **`db`**, plus **`POSTGRES_HOST`** (e.g. **`db`** on the Compose network). The app builds an async **`DATABASE_URL`** with **URL-encoded** credentials (so special characters in passwords are safe). You can still set **`DATABASE_URL`** explicitly to override.
-
-The **`web`** service sets **`API_INTERNAL_URL`** so the Next.js **server** can reach FastAPI at `http://api:8000` without browser CORS. User-visible UI strings are **French** (`fr-FR`); README and API developer messages stay English.
-
-The committed **`.env.example`** lists defaults without secrets; **`.env`** is gitignored.
-
-**Host shells:** commands that use `$POSTGRES_*` on your machine must load `.env` first (see [pgvector](#pgvector) — host `psql` example).
-
-## Docker: start the stack
-
-From the **repository root**:
+Build and start everything (including the ingestion `worker`):
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
 Or detached:
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
-This builds/starts services defined in `docker-compose.yml`. The stack includes:
+### 3) Open the app + verify health
 
-- **`db`**: PostgreSQL using the **`pgvector/pgvector`** image (pg16) with a named volume for data and init scripts under `docker/postgres/init/`.
-- **`api`**: FastAPI, exposed on **`API_PORT`** (default **8000**).
-- **`web`**: Next.js (App Router) **production** image (`next build` + standalone `node server.js`). Rebuild the image after frontend code changes. For **local dev with hot reload**, run **`npm run dev`** in **`frontend/`** (see below) instead of relying on this service.
+- **Web UI**: `http://localhost:${WEB_PORT:-3000}`
+- **Admin UI** (upload + status): `http://localhost:${WEB_PORT:-3000}/admin`
+- **API health**: `http://localhost:${API_PORT:-8000}/health`
 
-### Verify services
-
-```bash
-docker compose ps
-```
-
-The **`db`** service should show as **healthy** once `pg_isready` succeeds. **`api`** and **`web`** should be **running** after images build.
-
-**Health check (API + database):**
+Quick health check:
 
 ```bash
 curl -sS "http://localhost:${API_PORT:-8000}/health"
 ```
 
-Expect **HTTP 200** and JSON like `{"status":"ok","database":"ok"}`. If PostgreSQL is down or unreachable, **`GET /health`** returns **503** with `database: "error"` (not a false “all OK”).
+### Useful Docker commands
 
-### Frontend outside Docker (optional)
+```bash
+docker compose ps
+docker compose logs -f api worker
+docker compose down
+```
+
+If you want to reset the database volume (destructive):
+
+```bash
+docker compose down -v
+```
+
+### Optional: run the frontend on the host (hot reload)
+
+Keep `db`, `api`, `worker` running in Docker, and run Next.js locally:
 
 ```bash
 cd frontend
@@ -99,48 +79,116 @@ export API_INTERNAL_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with **`api`** reachable on port **8000**.
+## Uploading a video
 
-## pgvector
+There are two supported ways: **Admin UI upload (recommended)** or **API calls**.
 
-PostgreSQL is expected to run **with the pgvector extension** available. This is required for **semantic search** in later epics.
+### Option A — Upload from the Admin UI
 
-- On a **fresh** data volume, `docker/postgres/init/01-pgvector.sql` runs `CREATE EXTENSION IF NOT EXISTS vector;` automatically.
-- To confirm from inside the **`db`** container (uses DB env vars **inside** the container — no host `.env` needed):
+1. Open `http://localhost:${WEB_PORT:-3000}/admin`
+2. In “Ajouter une vidéo”, set:
+   - **Label** (display name)
+   - **File** (`.mp4`, `.webm`, `.mov`, `.mkv`, …)
+3. Submit. The file is saved under the shared volume, and a DB row + ingestion job are created.
 
-  ```bash
-  docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE EXTENSION IF NOT EXISTS vector;"'
-  ```
+Notes:
 
-  (Should succeed; extension may already exist.)
+- Uploaded files are stored under `VIDEO_STORAGE_ROOT/uploads/…` inside the containers (host: `VIDEO_STORAGE_HOST_PATH/uploads/…`).
+- If `MISTRAL_API_KEY` is missing, ingestion will fail with `MISTRAL_NOT_CONFIGURED` (the upload/registration still works).
 
-- List extensions:
-
-  ```bash
-  docker compose exec db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c '\\dx'"
-  ```
-
-  You should see **`vector`**.
-
-Host-side (if `psql` is installed and the port is published), load `.env` then connect:
+### Option B — Upload via the API (`multipart/form-data`)
 
 ```bash
-set -a && source .env && set +a
-psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB}" -c '\dx'
+curl -sS -X POST "http://127.0.0.1:${API_PORT:-8000}/videos/upload" \
+  -F "label=Ma vidéo" \
+  -F "file=@./path/to/video.mp4"
+```
+
+### Option C — Register an existing file path (`application/json`)
+
+This does not upload bytes: it registers a path the `worker` must be able to read.
+
+- **Relative paths** are resolved under `VIDEO_STORAGE_ROOT` (so `uploads/foo.mp4` means `/data/videos/uploads/foo.mp4` in Compose).
+- **Absolute paths** are accepted (with validation), but must exist in the container filesystem.
+
+```bash
+curl -sS -X POST "http://127.0.0.1:${API_PORT:-8000}/videos" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Demo","storage_path":"uploads/demo.mp4"}'
+```
+
+## Phase 2 — Tech stack and pipelines
+
+### Tech stack (high level)
+
+- **Frontend**: Next.js (App Router) + TypeScript + TailwindCSS
+  - Uses server-side proxy routes under `frontend/app/api/**` to call FastAPI via `API_INTERNAL_URL` (avoids browser CORS).
+- **Backend API**: FastAPI + Pydantic + SQLAlchemy (async) + Alembic migrations
+- **Database**: PostgreSQL 16 with **pgvector** (embedding vectors stored as `vector(1024)`)
+- **Worker**: a dedicated Python process (`python -m app.worker`) for ingestion steps (keeps HTTP requests fast)
+- **Media tools**: `ffmpeg` / `ffprobe` (installed in the backend image)
+- **AI provider**: Mistral (transcription + embeddings + “anchor” extraction)
+
+### Ingestion pipeline (what happens after registration)
+
+When you register a video (`POST /videos` or `POST /videos/upload`), the API writes:
+
+- a `videos` row (label + storage path)
+- an `ingestion_jobs` row (`pending`, then updated by the worker)
+
+The **worker** continuously claims `pending` jobs and runs phases:
+
+- **Audio extraction**: `ffmpeg` → mono 16kHz WAV
+- **Transcription**: Mistral Voxtral (`MISTRAL_TRANSCRIPTION_MODEL`, default `voxtral-mini-latest`)
+- **Chunking**:
+  - **micro segments**: timestamped spans for precise seeks
+  - **macro segments**: groups of micros to form context-rich blocks (targeted by words/chars via `TRANSCRIPT_MACRO_TARGET_*`)
+- **Embeddings**:
+  - micro embeddings (per micro segment)
+  - macro embeddings (per macro block)
+- **Indexing**: writes segments + vectors into PostgreSQL (pgvector)
+
+### Search pipeline (what happens on `POST /videos/{id}/search`)
+
+The search is designed to return a **timestamped micro segment** plus a **macro context block** for display/highlighting:
+
+1. **Embed the query** (Mistral embeddings)
+2. **Phase 1 — macro retrieval (hybrid)**
+   - Dense retrieval: cosine distance on macro embeddings (pgvector)
+   - Lexical retrieval: Postgres full-text ranking on macro text (BM25-like)
+   - **Fuse** the rankings with **Reciprocal Rank Fusion (RRF)** (`SEARCH_RRF_K`, default `60`)
+   - Keep an adaptive shortlist (distance threshold + gap from best), then take top-K macros for context (`SEARCH_MACRO_TOP_K`)
+3. **Phase 2 — anchor extraction (LLM)**
+   - Send a structured JSON payload (macros + their micros) to a Mistral chat model (`MISTRAL_ANCHOR_MODEL`)
+   - The model returns an **anchor** and an inferred intent (**quote** vs **scene**)
+4. **Resolve anchor → micro segment**
+   - Lexical overlap resolution over candidate micros (quote intent is stricter)
+   - Safety: keep result near the “peak” similarity region (bounded time window)
+5. **Response contract**
+   - `start_ts`, `end_ts`, `text` (micro)
+   - `macro_context_text` (macro)
+   - `match_start_offset`, `match_end_offset` (highlight inside the macro string)
+   - `confidence` and `match_quality` tier
+
+## pgvector notes (optional checks)
+
+- On a **fresh** DB volume, `docker/postgres/init/01-pgvector.sql` runs `CREATE EXTENSION IF NOT EXISTS vector;`.
+- Check extensions inside the container:
+
+```bash
+docker compose exec db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c '\\dx'"
 ```
 
 ## Tests
 
-Repository root — Compose contract checks:
+- Root (static Compose contract checks):
 
 ```bash
 npm test
 ```
 
-Frontend unit tests (Vitest), after `npm ci` in **`frontend/`**:
+- Frontend (Vitest):
 
 ```bash
 cd frontend && npm ci && npm test
 ```
-
-The root script validates `docker compose` configuration and expected files (uses `.env.example` so a local `.env` is not required). If **`frontend/node_modules`** exists, it also runs **`frontend`** Vitest.
